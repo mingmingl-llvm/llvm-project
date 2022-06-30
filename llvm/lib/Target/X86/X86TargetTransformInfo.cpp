@@ -3644,7 +3644,8 @@ X86TTIImpl::getIntrinsicInstrCost(const IntrinsicCostAttributes &ICA,
 }
 
 InstructionCost X86TTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val,
-                                               unsigned Index) {
+                                               unsigned Index,
+                                               const Instruction *I) {
   static const CostTblEntry SLMCostTbl[] = {
      { ISD::EXTRACT_VECTOR_ELT,       MVT::i8,      4 },
      { ISD::EXTRACT_VECTOR_ELT,       MVT::i16,     4 },
@@ -3772,7 +3773,8 @@ InstructionCost X86TTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val,
   if (Opcode == Instruction::ExtractElement && ScalarType->isPointerTy())
     RegisterFileMoveCost += 1;
 
-  return BaseT::getVectorInstrCost(Opcode, Val, Index) + RegisterFileMoveCost;
+  return BaseT::getVectorInstrCost(Opcode, Val, Index, I) +
+         RegisterFileMoveCost;
 }
 
 InstructionCost X86TTIImpl::getScalarizationOverhead(VectorType *Ty,
@@ -3901,7 +3903,8 @@ InstructionCost X86TTIImpl::getScalarizationOverhead(VectorType *Ty,
         for (unsigned I = 0; I != NumElts; ++I)
           if (WidenedDemandedElts[I]) {
             unsigned Idx = I % Scale;
-            Cost += getVectorInstrCost(Instruction::ExtractElement, Ty, Idx);
+            Cost += getVectorInstrCost(Instruction::ExtractElement, Ty, Idx,
+                                       nullptr);
           }
 
         return Cost;
@@ -4512,7 +4515,8 @@ X86TTIImpl::getArithmeticReductionCost(unsigned Opcode, VectorType *ValTy,
   }
 
   // Add the final extract element to the cost.
-  return ReductionCost + getVectorInstrCost(Instruction::ExtractElement, Ty, 0);
+  return ReductionCost +
+         getVectorInstrCost(Instruction::ExtractElement, Ty, 0, nullptr);
 }
 
 InstructionCost X86TTIImpl::getMinMaxCost(Type *Ty, Type *CondTy,
@@ -4813,7 +4817,8 @@ X86TTIImpl::getMinMaxReductionCost(VectorType *ValTy, VectorType *CondTy,
   }
 
   // Add the final extract element to the cost.
-  return MinMaxCost + getVectorInstrCost(Instruction::ExtractElement, Ty, 0);
+  return MinMaxCost +
+         getVectorInstrCost(Instruction::ExtractElement, Ty, 0, nullptr);
 }
 
 /// Calculate the cost of materializing a 64-bit value. This helper

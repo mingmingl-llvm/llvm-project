@@ -88,10 +88,12 @@ private:
     InstructionCost Cost = 0;
     // Broadcast cost is equal to the cost of extracting the zero'th element
     // plus the cost of inserting it into every element of the result vector.
-    Cost += thisT()->getVectorInstrCost(Instruction::ExtractElement, VTy, 0);
+    Cost += thisT()->getVectorInstrCost(Instruction::ExtractElement, VTy, 0,
+                                        nullptr);
 
     for (int i = 0, e = VTy->getNumElements(); i < e; ++i) {
-      Cost += thisT()->getVectorInstrCost(Instruction::InsertElement, VTy, i);
+      Cost += thisT()->getVectorInstrCost(Instruction::InsertElement, VTy, i,
+                                          nullptr);
     }
     return Cost;
   }
@@ -108,8 +110,10 @@ private:
     // vector and finally index 3 of second vector and insert them at index
     // <0,1,2,3> of result vector.
     for (int i = 0, e = VTy->getNumElements(); i < e; ++i) {
-      Cost += thisT()->getVectorInstrCost(Instruction::InsertElement, VTy, i);
-      Cost += thisT()->getVectorInstrCost(Instruction::ExtractElement, VTy, i);
+      Cost += thisT()->getVectorInstrCost(Instruction::InsertElement, VTy, i,
+                                          nullptr);
+      Cost += thisT()->getVectorInstrCost(Instruction::ExtractElement, VTy, i,
+                                          nullptr);
     }
     return Cost;
   }
@@ -132,9 +136,9 @@ private:
     // type.
     for (int i = 0; i != NumSubElts; ++i) {
       Cost += thisT()->getVectorInstrCost(Instruction::ExtractElement, VTy,
-                                          i + Index);
-      Cost +=
-          thisT()->getVectorInstrCost(Instruction::InsertElement, SubVTy, i);
+                                          i + Index, nullptr);
+      Cost += thisT()->getVectorInstrCost(Instruction::InsertElement, SubVTy, i,
+                                          nullptr);
     }
     return Cost;
   }
@@ -156,10 +160,10 @@ private:
     // the source type plus the cost of inserting them into the result vector
     // type.
     for (int i = 0; i != NumSubElts; ++i) {
-      Cost +=
-          thisT()->getVectorInstrCost(Instruction::ExtractElement, SubVTy, i);
+      Cost += thisT()->getVectorInstrCost(Instruction::ExtractElement, SubVTy,
+                                          i, nullptr);
       Cost += thisT()->getVectorInstrCost(Instruction::InsertElement, VTy,
-                                          i + Index);
+                                          i + Index, nullptr);
     }
     return Cost;
   }
@@ -210,7 +214,7 @@ private:
                                  FixedVectorType::get(
                                      PointerType::get(VT->getElementType(), 0),
                                      VT->getNumElements()),
-                                 -1)
+                                 -1, nullptr)
             : 0;
     InstructionCost LoadCost =
         VT->getNumElements() *
@@ -235,7 +239,7 @@ private:
                Instruction::ExtractElement,
                FixedVectorType::get(Type::getInt1Ty(DataTy->getContext()),
                                     VT->getNumElements()),
-               -1) +
+               -1, nullptr) +
            getCFInstrCost(Instruction::Br, CostKind) +
            getCFInstrCost(Instruction::PHI, CostKind));
     }
@@ -714,9 +718,11 @@ public:
       if (!DemandedElts[i])
         continue;
       if (Insert)
-        Cost += thisT()->getVectorInstrCost(Instruction::InsertElement, Ty, i);
+        Cost += thisT()->getVectorInstrCost(Instruction::InsertElement, Ty, i,
+                                            nullptr);
       if (Extract)
-        Cost += thisT()->getVectorInstrCost(Instruction::ExtractElement, Ty, i);
+        Cost += thisT()->getVectorInstrCost(Instruction::ExtractElement, Ty, i,
+                                            nullptr);
     }
 
     return Cost;
@@ -1079,8 +1085,9 @@ public:
 
   InstructionCost getExtractWithExtendCost(unsigned Opcode, Type *Dst,
                                            VectorType *VecTy, unsigned Index) {
+    // FIXME: Pass instruction pointer.
     return thisT()->getVectorInstrCost(Instruction::ExtractElement, VecTy,
-                                       Index) +
+                                       Index, nullptr) +
            thisT()->getCastInstrCost(Opcode, Dst, VecTy->getElementType(),
                                      TTI::CastContextHint::None,
                                      TTI::TCK_RecipThroughput);
@@ -1139,8 +1146,8 @@ public:
     return 1;
   }
 
-  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val,
-                                     unsigned Index) {
+  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index,
+                                     const Instruction *I = nullptr) {
     std::pair<InstructionCost, MVT> LT =
         getTLI()->getTypeLegalizationCost(DL, Val->getScalarType());
 
@@ -2180,7 +2187,8 @@ public:
     ArithCost +=
         NumReduxLevels * thisT()->getArithmeticInstrCost(Opcode, Ty, CostKind);
     return ShuffleCost + ArithCost +
-           thisT()->getVectorInstrCost(Instruction::ExtractElement, Ty, 0);
+           thisT()->getVectorInstrCost(Instruction::ExtractElement, Ty, 0,
+                                       nullptr);
   }
 
   /// Try to calculate the cost of performing strict (in-order) reductions,
@@ -2286,7 +2294,8 @@ public:
     // The last min/max should be in vector registers and we counted it above.
     // So just need a single extractelement.
     return ShuffleCost + MinMaxCost +
-           thisT()->getVectorInstrCost(Instruction::ExtractElement, Ty, 0);
+           thisT()->getVectorInstrCost(Instruction::ExtractElement, Ty, 0,
+                                       nullptr);
   }
 
   InstructionCost getExtendedAddReductionCost(bool IsMLA, bool IsUnsigned,

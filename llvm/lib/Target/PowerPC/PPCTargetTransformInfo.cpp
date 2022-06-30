@@ -1071,7 +1071,8 @@ InstructionCost PPCTTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
 }
 
 InstructionCost PPCTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val,
-                                               unsigned Index) {
+                                               unsigned Index,
+                                               const Instruction *I) {
   assert(Val->isVectorTy() && "This must be a vector type");
 
   int ISD = TLI->InstructionOpcodeToISD(Opcode);
@@ -1081,7 +1082,7 @@ InstructionCost PPCTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val,
   if (!CostFactor.isValid())
     return InstructionCost::getMax();
 
-  InstructionCost Cost = BaseT::getVectorInstrCost(Opcode, Val, Index);
+  InstructionCost Cost = BaseT::getVectorInstrCost(Opcode, Val, Index, I);
   Cost *= CostFactor;
 
   if (ST->hasVSX() && Val->getScalarType()->isDoubleTy()) {
@@ -1146,7 +1147,6 @@ InstructionCost PPCTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
                                             unsigned AddressSpace,
                                             TTI::TargetCostKind CostKind,
                                             const Instruction *I) {
-
   InstructionCost CostFactor = vectorCostAdjustmentFactor(Opcode, Src, nullptr);
   if (!CostFactor.isValid())
     return InstructionCost::getMax();
@@ -1222,7 +1222,7 @@ InstructionCost PPCTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
   if (Src->isVectorTy() && Opcode == Instruction::Store)
     for (int i = 0, e = cast<FixedVectorType>(Src)->getNumElements(); i < e;
          ++i)
-      Cost += getVectorInstrCost(Instruction::ExtractElement, Src, i);
+      Cost += getVectorInstrCost(Instruction::ExtractElement, Src, i, I);
 
   return Cost;
 }

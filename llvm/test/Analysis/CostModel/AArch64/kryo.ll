@@ -21,6 +21,26 @@ define void @vectorInstrCost() {
     ; CHECK: cost of 2 {{.*}} insertelement <2 x i64> undef, i64 undef, i32 1
     %t3 = insertelement <2 x i64> undef, i64 undef, i32 0
     %t4 = insertelement <2 x i64> undef, i64 undef, i32 1
-
     ret void
+}
+
+; CHECK-LABEL: vectorInstrExtractCost
+define i64 @vectorInstrExtractCost(<4 x i64> %vecreg) {
+    ; CHECK: cost of 2 {{.*}} extractelement <4 x i64> %vecreg, i32 1
+    ; CHECK: cost of 2 {{.*}} extractelement <4 x i64> %vecreg, i32 2
+    %t1 = extractelement <4 x i64> %vecreg, i32 1
+    %t2 = extractelement <4 x i64> %vecreg, i32 2
+    %ele = add i64 %t2, 1
+    %cond = icmp eq i64 %t1, %ele
+
+    ; Vector extracts - extracting each element should have a cost
+    ; if they are used as integers.
+    ;
+    ; CHECK: cost of 2 {{.*}} extractelement <4 x i64> %vecreg, i32 0
+    ; CHECK: cost of 2 {{.*}} extractelement <4 x i64> %vecreg, i32 3
+    %t0 = extractelement <4 x i64> %vecreg, i32 0
+    %t3 = extractelement <4 x i64> %vecreg, i32 3
+    %val = select i1 %cond, i64 %t0 , i64 %t3
+
+    ret i64 %val
 }

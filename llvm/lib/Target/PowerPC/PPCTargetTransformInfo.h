@@ -123,8 +123,8 @@ public:
                                      CmpInst::Predicate VecPred,
                                      TTI::TargetCostKind CostKind,
                                      const Instruction *I = nullptr);
-  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val,
-                                     unsigned Index);
+  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index,
+                                     const Instruction *I);
   InstructionCost getMemoryOpCost(unsigned Opcode, Type *Src,
                                   MaybeAlign Alignment, unsigned AddressSpace,
                                   TTI::TargetCostKind CostKind,

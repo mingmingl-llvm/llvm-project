@@ -1140,8 +1140,11 @@ public:
 
   /// \return The expected cost of vector Insert and Extract.
   /// Use -1 to indicate that there is no information on the index value.
+  /// Caller can provide the instruction that holds Opcode in `I`, or use
+  /// nullptr to indcate there is no instruction information.
   InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val,
-                                     unsigned Index = -1) const;
+                                     unsigned Index = -1,
+                                     const Instruction *I = nullptr) const;
 
   /// \return The cost of replication shuffle of \p VF elements typed \p EltTy
   /// \p ReplicationFactor times.
@@ -1704,7 +1707,8 @@ public:
                                              TTI::TargetCostKind CostKind,
                                              const Instruction *I) = 0;
   virtual InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val,
-                                             unsigned Index) = 0;
+                                             unsigned Index,
+                                             const Instruction *I) = 0;
 
   virtual InstructionCost
   getReplicationShuffleCost(Type *EltTy, int ReplicationFactor, int VF,
@@ -2243,9 +2247,9 @@ public:
                                      const Instruction *I) override {
     return Impl.getCmpSelInstrCost(Opcode, ValTy, CondTy, VecPred, CostKind, I);
   }
-  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val,
-                                     unsigned Index) override {
-    return Impl.getVectorInstrCost(Opcode, Val, Index);
+  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index,
+                                     const Instruction *I) override {
+    return Impl.getVectorInstrCost(Opcode, Val, Index, I);
   }
   InstructionCost
   getReplicationShuffleCost(Type *EltTy, int ReplicationFactor, int VF,

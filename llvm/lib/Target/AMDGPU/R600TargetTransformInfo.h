@@ -61,7 +61,7 @@ public:
   InstructionCost getCFInstrCost(unsigned Opcode, TTI::TargetCostKind CostKind,
                                  const Instruction *I = nullptr);
   InstructionCost getVectorInstrCost(unsigned Opcode, Type *ValTy,
-                                     unsigned Index);
+                                     unsigned Index, const Instruction *I);
 };
 
 } // end namespace llvm

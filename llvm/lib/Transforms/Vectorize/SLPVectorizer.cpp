@@ -5821,7 +5821,7 @@ InstructionCost BoUpSLP::getEntryCost(const TreeEntry *E,
         }
       }
       Cost -= TTIRef.getVectorInstrCost(Instruction::ExtractElement,
-                                        EE->getVectorOperandType(), Idx);
+                                        EE->getVectorOperandType(), Idx, EE);
     }
     // Add a cost for subvector extracts/inserts if required.
     for (const auto &Data : ExtractVectorsTys) {
@@ -6056,10 +6056,11 @@ InstructionCost BoUpSLP::getEntryCost(const TreeEntry *E,
             auto *EE = cast<ExtractElementInst>(VL[I]);
             CommonCost -= TTI->getVectorInstrCost(Instruction::ExtractElement,
                                                   EE->getVectorOperandType(),
-                                                  *getExtractIndex(EE));
+                                                  *getExtractIndex(EE), EE);
           } else {
-            CommonCost -= TTI->getVectorInstrCost(Instruction::ExtractElement,
-                                                  VecTy, Idx);
+            CommonCost -=
+                TTI->getVectorInstrCost(Instruction::ExtractElement, VecTy, Idx,
+                                        dyn_cast<Instruction>(VL[I]));
             ++Idx;
           }
         }
@@ -6069,11 +6070,12 @@ InstructionCost BoUpSLP::getEntryCost(const TreeEntry *E,
             auto *EE = cast<ExtractElementInst>(V);
             CommonCost += TTI->getVectorInstrCost(Instruction::ExtractElement,
                                                   EE->getVectorOperandType(),
-                                                  *getExtractIndex(EE));
+                                                  *getExtractIndex(EE), EE);
           } else {
             --Idx;
-            CommonCost += TTI->getVectorInstrCost(Instruction::ExtractElement,
-                                                  VecTy, Idx);
+            CommonCost +=
+                TTI->getVectorInstrCost(Instruction::ExtractElement, VecTy, Idx,
+                                        dyn_cast<Instruction>(V));
           }
         }
       }
@@ -6097,8 +6099,8 @@ InstructionCost BoUpSLP::getEntryCost(const TreeEntry *E,
               continue;
             }
           }
-          CommonCost -=
-              TTI->getVectorInstrCost(Instruction::ExtractElement, VecTy, I);
+          CommonCost -= TTI->getVectorInstrCost(Instruction::ExtractElement,
+                                                VecTy, I, EI);
         }
       } else {
         AdjustExtractsCost(CommonCost);
@@ -7079,8 +7081,8 @@ InstructionCost BoUpSLP::getTreeCost(ArrayRef<Value *> VectorizedVals) {
       ExtractCost += TTI->getExtractWithExtendCost(Extend, EU.Scalar->getType(),
                                                    VecTy, EU.Lane);
     } else {
-      ExtractCost +=
-          TTI->getVectorInstrCost(Instruction::ExtractElement, VecTy, EU.Lane);
+      ExtractCost += TTI->getVectorInstrCost(Instruction::ExtractElement, VecTy,
+                                             EU.Lane, nullptr);
     }
   }
 

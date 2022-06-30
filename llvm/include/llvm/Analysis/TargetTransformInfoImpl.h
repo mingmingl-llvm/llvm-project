@@ -561,8 +561,8 @@ public:
     return 1;
   }
 
-  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val,
-                                     unsigned Index) const {
+  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index,
+                                     const Instruction *I) const {
     return 1;
   }
 
@@ -1132,7 +1132,7 @@ public:
       if (auto *CI = dyn_cast<ConstantInt>(IE->getOperand(2)))
         if (CI->getValue().getActiveBits() <= 32)
           Idx = CI->getZExtValue();
-      return TargetTTI->getVectorInstrCost(Opcode, Ty, Idx);
+      return TargetTTI->getVectorInstrCost(Opcode, Ty, Idx, I);
     }
     case Instruction::ShuffleVector: {
       auto *Shuffle = dyn_cast<ShuffleVectorInst>(U);
@@ -1222,7 +1222,7 @@ public:
         if (CI->getValue().getActiveBits() <= 32)
           Idx = CI->getZExtValue();
       Type *DstTy = U->getOperand(0)->getType();
-      return TargetTTI->getVectorInstrCost(Opcode, DstTy, Idx);
+      return TargetTTI->getVectorInstrCost(Opcode, DstTy, Idx, I);
     }
     }
     // By default, just classify everything as 'basic'.

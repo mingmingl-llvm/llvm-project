@@ -146,8 +146,8 @@ public:
                                      CmpInst::Predicate VecPred,
                                      TTI::TargetCostKind CostKind,
                                      const Instruction *I = nullptr);
-  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val,
-                                     unsigned Index);
+  InstructionCost getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index,
+                                     const Instruction *I);
   InstructionCost getScalarizationOverhead(VectorType *Ty,
                                            const APInt &DemandedElts,
                                            bool Insert, bool Extract);

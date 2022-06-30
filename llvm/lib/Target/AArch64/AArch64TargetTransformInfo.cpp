@@ -1777,8 +1777,11 @@ InstructionCost AArch64TTIImpl::getExtractWithExtendCost(unsigned Opcode,
 
   // Get the cost for the extract. We compute the cost (if any) for the extend
   // below.
+  //
+  // FIXME: Change signature of `getExtractWithExtendCost` so caller
+  // can optionally provide the extract-element instruction as context.
   InstructionCost Cost =
-      getVectorInstrCost(Instruction::ExtractElement, VecTy, Index);
+      getVectorInstrCost(Instruction::ExtractElement, VecTy, Index, nullptr);
 
   // Legalize the types.
   auto VecLT = TLI->getTypeLegalizationCost(DL, VecTy);
@@ -1831,7 +1834,8 @@ InstructionCost AArch64TTIImpl::getCFInstrCost(unsigned Opcode,
 }
 
 InstructionCost AArch64TTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val,
-                                                   unsigned Index) {
+                                                   unsigned Index,
+                                                   const Instruction *I) {
   assert(Val->isVectorTy() && "This must be a vector type");
 
   if (Index != -1U) {
@@ -1849,8 +1853,45 @@ InstructionCost AArch64TTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val,
       Index = Index % Width;
     }
 
-    // The element at index zero is already inside the vector.
-    if (Index == 0)
+    // FIXME: Use `IsExtractedElementUsedAsInteger` to decide cost when index is
+    // explicit (i.e., not -1, not limited to 0).
+    auto IsExtractedElementUsedAsInteger =
+        [Val](const Instruction *Inst) -> bool {
+      if (!isa_and_nonnull<ExtractElementInst>(Inst) ||
+          !Val->getScalarType()->isIntegerTy())
+        return false;
+
+      // Inst is an ExtractElementInst and element type in the vector is
+      // integer.
+      bool UsedAsInteger = false;
+      for (const Use &U : Inst->uses()) {
+        Instruction *UserI = dyn_cast<Instruction>(U.getUser());
+
+        assert(UserI && "All users of an instruction should be instructions");
+
+        // If the extracted element is used in a store operation, it must be the
+        // value (not pointer); and it could be stored bit-wise without an
+        // explicit conversion to integer.
+        if (isa<StoreInst>(UserI))
+          continue;
+
+        // If used as a floating point value, users can access the subregister directly.
+        if (isa<UIToFPInst>(UserI) || isa<SIToFPInst>(UserI))
+          continue;
+
+        // For the rest of cases, assume that the extracted element will be used
+        // as a scalar/integer.
+        UsedAsInteger = true;
+        break;
+      }
+      return UsedAsInteger;
+    };
+
+    // For extract_element instruction, the element at index zero is already
+    // inside the floating-point subregister.
+    //
+    // If element type is integer, an explicit move operation will be codegen'd.
+    if (Index == 0 && !IsExtractedElementUsedAsInteger(I))
       return 0;
   }
 

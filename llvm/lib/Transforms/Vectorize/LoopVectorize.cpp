@@ -6422,6 +6422,7 @@ LoopVectorizationCostModel::getUniformMemOpCost(Instruction *I,
   }
   StoreInst *SI = cast<StoreInst>(I);
 
+  // FIXME: Use a specific type rather than unknown.
   bool isLoopInvariantStoreValue = Legal->isUniform(SI->getValueOperand());
   return TTI.getAddressComputationCost(ValTy) +
          TTI.getMemoryOpCost(Instruction::Store, ValTy, Alignment, AS,
@@ -6429,7 +6430,7 @@ LoopVectorizationCostModel::getUniformMemOpCost(Instruction *I,
          (isLoopInvariantStoreValue
               ? 0
               : TTI.getVectorInstrCost(Instruction::ExtractElement, VectorTy,
-                                       VF.getKnownMinValue() - 1));
+                                       VF.getKnownMinValue() - 1, nullptr));
 }
 
 InstructionCost

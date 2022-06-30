@@ -108,14 +108,15 @@ InstructionCost R600TTIImpl::getCFInstrCost(unsigned Opcode,
 }
 
 InstructionCost R600TTIImpl::getVectorInstrCost(unsigned Opcode, Type *ValTy,
-                                                unsigned Index) {
+                                                unsigned Index,
+                                                const Instruction *I) {
   switch (Opcode) {
   case Instruction::ExtractElement:
   case Instruction::InsertElement: {
     unsigned EltSize =
         DL.getTypeSizeInBits(cast<VectorType>(ValTy)->getElementType());
     if (EltSize < 32) {
-      return BaseT::getVectorInstrCost(Opcode, ValTy, Index);
+      return BaseT::getVectorInstrCost(Opcode, ValTy, Index, I);
     }
 
     // Extracts are just reads of a subregister, so are free. Inserts are
@@ -126,7 +127,7 @@ InstructionCost R600TTIImpl::getVectorInstrCost(unsigned Opcode, Type *ValTy,
     return Index == ~0u ? 2 : 0;
   }
   default:
-    return BaseT::getVectorInstrCost(Opcode, ValTy, Index);
+    return BaseT::getVectorInstrCost(Opcode, ValTy, Index, I);
   }
 }
 

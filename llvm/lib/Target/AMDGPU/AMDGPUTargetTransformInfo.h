@@ -160,7 +160,7 @@ public:
                                      ArrayRef<unsigned> Indices = {}) const;
 
   InstructionCost getVectorInstrCost(unsigned Opcode, Type *ValTy,
-                                     unsigned Index);
+                                     unsigned Index, const Instruction *I);
   bool isSourceOfDivergence(const Value *V) const;
   bool isAlwaysUniform(const Value *V) const;
 
