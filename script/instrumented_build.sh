@@ -48,7 +48,7 @@ cmake -G Ninja -DCMAKE_BUILD_TYPE=Release  -DLLVM_ENABLE_PROJECTS="clang;lld" \
 
 export LLVM_PROFILE_FILE=${PATH_TO_INSTRUMENTED_BINARY}/profiles/clang.profraw
 echo $LLVM_PROFILE_FILE
-ninja -t commands | head -100 >& ./instr_commands.sh
+ninja -t commands | head -1000 >& ./instr_commands.sh
 
 chmod +x ./instr_commands.sh
 ./instr_commands.sh
