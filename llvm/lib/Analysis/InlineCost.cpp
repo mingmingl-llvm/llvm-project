@@ -84,6 +84,10 @@ static cl::opt<int>
                           cl::init(45),
                           cl::desc("Threshold for inlining cold callsites"));
 
+static cl::opt<int>
+    InlineSavingsAggressiveMultipler("inline-savings-aggressive-multiplier",
+                                     cl::Hidden, cl::init(6));
+
 static cl::opt<bool> InlineEnableCostBenefitAnalysis(
     "inline-enable-cost-benefit-analysis", cl::Hidden, cl::init(false),
     cl::desc("Enable the cost-benefit analysis for the inliner"));
@@ -96,6 +100,8 @@ static cl::opt<int>
     InlineSizeAllowance("inline-size-allowance", cl::Hidden, cl::init(100),
                         cl::desc("The maximum size of a callee that get's "
                                  "inlined without sufficient cycle savings"));
+
+static cl::opt<bool> EnableHybrid("inline-hybrid-model", cl::init(false));
 
 // We introduce this threshold to help performance of instrumentation based
 // PGO before we actually hook up inliner with analysis passes such as BPI and
@@ -897,11 +903,29 @@ class InlineCostCallAnalyzer final : public CallAnalyzer {
     //
     // Note that the left hand side is specific to a call site.  The right hand
     // side is a constant for the entire executable.
+    if (!EnableHybrid) {
+      APInt LHS = CycleSavings;
+      LHS *= InlineSavingsMultiplier;
+      APInt RHS(128, PSI->getOrCompHotCountThreshold());
+      RHS *= Size;
+      return LHS.uge(RHS);
+    }
+
     APInt LHS = CycleSavings;
-    LHS *= InlineSavingsMultiplier;
+    LHS *= InlineSavingsAggressiveMultipler;
+    LHS = LHS.lshr(2);
     APInt RHS(128, PSI->getOrCompHotCountThreshold());
     RHS *= Size;
-    return LHS.uge(RHS);
+    if (LHS.uge(RHS))
+      return true;
+
+    APInt LHSConservative = CycleSavings;
+    LHSConservative *= InlineSavingsMultiplier;
+
+    if (!LHSConservative.uge(RHS))
+      return false;
+
+    return std::nullopt;
   }
 
   InlineResult finalizeAnalysis() override {
