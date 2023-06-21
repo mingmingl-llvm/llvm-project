@@ -1136,11 +1136,11 @@ endif()
 
 if(LLVM_PROFDATA_FILE AND EXISTS ${LLVM_PROFDATA_FILE})
   if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" )
-    append("-fprofile-instr-use=\"${LLVM_PROFDATA_FILE}\""
+    append("-fprofile-use=\"${LLVM_PROFDATA_FILE}\""
       CMAKE_CXX_FLAGS
       CMAKE_C_FLAGS)
     if(NOT LINKER_IS_LLD_LINK)
-      append("-fprofile-instr-use=\"${LLVM_PROFDATA_FILE}\""
+      append("-fprofile-use=\"${LLVM_PROFDATA_FILE}\""
         CMAKE_EXE_LINKER_FLAGS
         CMAKE_SHARED_LINKER_FLAGS)
     endif()
