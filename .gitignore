@@ -27,7 +27,10 @@
 /*/CMakeUserPresets.json
 
 # Nested build directory
+/instrumented_build
 /build*
+.ninja_log
+.ninja_deps
 
 #==============================================================================#
 # Explicit files to ignore (only matches one).
