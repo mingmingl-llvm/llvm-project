@@ -1,4 +1,5 @@
-PATH_TO_LLVM_PROJECT=/usr/local/google/home/mingmingl/llvm-fork/llvm-project
+#PATH_TO_LLVM_PROJECT=/usr/local/google/home/mingmingl/llvm-fork/llvm-project
+PATH_TO_LLVM_PROJECT=/home/mingmingl/llvm-project2/llvm-project
 # Assumes prebuild.sh already run.
 PATH_TO_INSTALL_BUILD=$PATH_TO_LLVM_PROJECT/build
 
