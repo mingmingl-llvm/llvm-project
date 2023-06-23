@@ -1,5 +1,5 @@
-#PATH_TO_LLVM_PROJECT=/usr/local/google/home/mingmingl/llvm-fork/llvm-project
-PATH_TO_LLVM_PROJECT=/home/mingmingl/llvm-project2/llvm-project
+PATH_TO_LLVM_PROJECT=/usr/local/google/home/mingmingl/llvm-fork/llvm-project
+#PATH_TO_LLVM_PROJECT=/home/mingmingl/llvm-project2/llvm-project
 # Assumes prebuild.sh already run.
 PATH_TO_INSTALL_BUILD=$PATH_TO_LLVM_PROJECT/build
 
@@ -15,10 +15,11 @@ INSTRUMENTED_CMAKE_FLAGS=(
   "-DLLVM_ENABLE_PROJECTS=clang;lld;compiler-rt"
   "-DCMAKE_C_COMPILER=${PATH_TO_INSTALL_BUILD}/bin/clang"
   "-DCMAKE_CXX_COMPILER=${PATH_TO_INSTALL_BUILD}/bin/clang++"
+  "-DLLVM_ENABLE_LTO=Thin"
   "-DLLVM_BUILD_INSTRUMENTED=IR"
   "-DLLVM_ENABLE_IR_PGO=ON"
   "-DLLVM_PROFILE_DATA_DIR=${PATH_TO_INSTRUMENTED_BINARY}/profiles"
-  "-DLLVM_USE_LINKER=lld" )
+  "-DLLVM_USE_LINKER=lld")
 
 BASELINE_CC_LD_CMAKE_FLAGS=(
   "-DCMAKE_C_FLAGS=-funique-internal-linkage-names"
@@ -48,9 +49,7 @@ cmake -G Ninja -DCMAKE_BUILD_TYPE=Release  -DLLVM_ENABLE_PROJECTS="clang;lld" \
               ${PATH_TO_LLVM_SOURCES}
 
 export LLVM_PROFILE_FILE=${PATH_TO_INSTRUMENTED_BINARY}/profiles/clang.profraw
-echo $LLVM_PROFILE_FILE
-ninja -t commands | head -1000 >& ./instr_commands.sh
 
-chmod +x ./instr_commands.sh
-./instr_commands.sh
+echo $LLVM_PROFILE_FILE
+ninja
   
