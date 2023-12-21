@@ -1,0 +1,525 @@
+
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>Instrumentation PGO Profile Format &#8212; LLVM 18.0.0git documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/llvm-theme.css" />
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="LLVM CoC Incident Reporting Guide" href="ReportingGuide.html" />
+    <link rel="prev" title="LLVM’s Analysis and Transform Passes" href="Passes.html" />
+<style type="text/css">
+  table.right { float: right; margin-left: 20px; }
+  table.right td { border: 1px solid #ccc; }
+</style>
+
+  </head><body>
+<div class="logo">
+  <a href="index.html">
+    <img src="_static/logo.png"
+         alt="LLVM Logo" width="250" height="88"/></a>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="ReportingGuide.html" title="LLVM CoC Incident Reporting Guide"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="Passes.html" title="LLVM’s Analysis and Transform Passes"
+             accesskey="P">previous</a> |</li>
+  <li><a href="https://llvm.org/">LLVM Home</a>&nbsp;|&nbsp;</li>
+  <li><a href="index.html">Documentation</a>&raquo;</li>
+
+          <li class="nav-item nav-item-1"><a href="UserGuides.html" accesskey="U">User Guides</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Instrumentation PGO Profile Format</a></li> 
+      </ul>
+    </div>
+
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+
+<h3>Documentation</h3>
+
+<ul class="want-points">
+    <li><a href="https://llvm.org/docs/GettingStartedTutorials.html">Getting Started/Tutorials</a></li>
+    <li><a href="https://llvm.org/docs/UserGuides.html">User Guides</a></li>
+    <li><a href="https://llvm.org/docs/Reference.html">Reference</a></li>
+</ul>
+
+<h3>Getting Involved</h3>
+
+<ul class="want-points">
+    <li><a href="https://llvm.org/docs/Contributing.html">Contributing to LLVM</a></li>
+    <li><a href="https://llvm.org/docs/HowToSubmitABug.html">Submitting Bug Reports</a></li>
+    <li><a href="https://llvm.org/docs/GettingInvolved.html#mailing-lists">Mailing Lists</a></li>
+    <li><a href="https://llvm.org/docs/GettingInvolved.html#irc">IRC</a></li>
+    <li><a href="https://llvm.org/docs/GettingInvolved.html#meetups-and-social-events">Meetups and Social Events</a></li>
+</ul>
+
+<h3>Additional Links</h3>
+
+<ul class="want-points">
+    <li><a href="https://llvm.org/docs/FAQ.html">FAQ</a></li>
+    <li><a href="https://llvm.org/docs/Lexicon.html">Glossary</a></li>
+    <li><a href="https://llvm.org/pubs">Publications</a></li>
+    <li><a href="https://github.com/llvm/llvm-project/">Github Repository</a></li>
+</ul>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/PGOProfileFormat.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="instrumentation-pgo-profile-format">
+<h1>Instrumentation PGO Profile Format<a class="headerlink" href="#instrumentation-pgo-profile-format" title="Permalink to this heading">¶</a></h1>
+<nav class="contents local" id="contents">
+<ul class="simple">
+<li><p><a class="reference internal" href="#overview" id="id11">Overview</a></p></li>
+<li><p><a class="reference internal" href="#raw-profile-format" id="id12">Raw Profile Format</a></p>
+<ul>
+<li><p><a class="reference internal" href="#general-storage-layout" id="id13">General Storage Layout</a></p></li>
+<li><p><a class="reference internal" href="#header" id="id14">Header</a></p></li>
+<li><p><a class="reference internal" href="#payload-sections" id="id15">Payload Sections</a></p>
+<ul>
+<li><p><a class="reference internal" href="#binary-ids" id="id16">Binary Ids</a></p></li>
+<li><p><a class="reference internal" href="#profile-data" id="id17">Profile Data</a></p></li>
+<li><p><a class="reference internal" href="#profile-counters" id="id18">Profile Counters</a></p></li>
+<li><p><a class="reference internal" href="#bitmap" id="id19">Bitmap</a></p></li>
+<li><p><a class="reference internal" href="#names" id="id20">Names</a></p></li>
+<li><p><a class="reference internal" href="#value-profile-data" id="id21">Value Profile Data</a></p></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#indexed-pgo-profile-format" id="id22">Indexed PGO Profile Format</a></p>
+<ul>
+<li><p><a class="reference internal" href="#id4" id="id23">General Storage Layout</a></p></li>
+<li><p><a class="reference internal" href="#id5" id="id24">Header</a></p></li>
+<li><p><a class="reference internal" href="#id6" id="id25">Payload Sections</a></p>
+<ul>
+<li><p><a class="reference internal" href="#cs-profile-summary" id="id26">(CS) Profile Summary</a></p></li>
+<li><p><a class="reference internal" href="#function-pgo-data" id="id27">Function PGO data</a></p></li>
+<li><p><a class="reference internal" href="#memprof-profile-data" id="id28">MemProf Profile data</a></p></li>
+<li><p><a class="reference internal" href="#id7" id="id29">Binary Ids</a></p></li>
+<li><p><a class="reference internal" href="#temporal-profile-traces" id="id30">Temporal Profile Traces</a></p></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#profile-data-usage" id="id31">Profile Data Usage</a></p></li>
+</ul>
+</nav>
+<section id="overview">
+<h2><a class="toc-backref" href="#id11" role="doc-backlink">Overview</a><a class="headerlink" href="#overview" title="Permalink to this heading">¶</a></h2>
+<p>Instrumentation PGO inserts <cite>llvm.instrprof.*</cite> <a class="reference external" href="https://llvm.org/docs/LangRef.html#code-generator-intrinsics">code generator intrinsics</a>
+in the code to generate profiles. This document describes two binary profile
+formats (raw and indexed) used by instrumentation.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The instrumentation profile format supports non-PGO use cases (e.g., temporal
+profiling). This document will focus on PGO. Source coverage uses both
+frontend instrumentation profiles and coverage mapping. The format for
+coverage mapping has its own <a class="reference external" href="https://llvm.org/docs/CoverageMappingFormat.html">documentation</a>.</p>
+</div>
+</section>
+<section id="raw-profile-format">
+<h2><a class="toc-backref" href="#id12" role="doc-backlink">Raw Profile Format</a><a class="headerlink" href="#raw-profile-format" title="Permalink to this heading">¶</a></h2>
+<p>The raw profile is generated by running the instrumented binary. It is a memory
+dump of the profile data.</p>
+<p>The instrumented binary currently collects two kinds of profile data, counters
+to profile branch probability and (various flavors of) value profiles. The
+profile data for a function span across several sections in the profile.</p>
+<section id="general-storage-layout">
+<h3><a class="toc-backref" href="#id13" role="doc-backlink">General Storage Layout</a><a class="headerlink" href="#general-storage-layout" title="Permalink to this heading">¶</a></h3>
+<p>A raw profile from an executable or a shared library <a class="footnote-reference brackets" href="#id8" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a> consists of a profile
+header and several sections. The storage layout is illustrated below. Generally,
+when the raw profile is read into an memory buffer, the actual byte offset of a
+section is inferred from the section’s order in the layout and size information
+of all the sections ahead of it.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">+----+-----------------------+</span>
+<span class="o">|</span>    <span class="o">|</span>        <span class="n">Magic</span>          <span class="o">|</span>
+<span class="o">|</span>    <span class="o">+-----------------------+</span>
+<span class="o">|</span>    <span class="o">|</span>        <span class="n">Version</span>        <span class="o">|</span>
+<span class="o">|</span>    <span class="o">+-----------------------+</span>
+<span class="n">H</span>    <span class="o">|</span>   <span class="n">Size</span> <span class="n">Info</span> <span class="k">for</span>       <span class="o">|</span>
+<span class="n">E</span>    <span class="o">|</span>      <span class="n">Section</span> <span class="mi">1</span>        <span class="o">|</span>
+<span class="n">A</span>    <span class="o">+-----------------------+</span>
+<span class="n">D</span>    <span class="o">|</span>   <span class="n">Size</span> <span class="n">Info</span> <span class="k">for</span>       <span class="o">|</span>
+<span class="n">E</span>    <span class="o">|</span>      <span class="n">Section</span> <span class="mi">2</span>        <span class="o">|</span>
+<span class="n">R</span>    <span class="o">+-----------------------+</span>
+<span class="o">|</span>    <span class="o">|</span>          <span class="o">...</span>          <span class="o">|</span>
+<span class="o">|</span>    <span class="o">+-----------------------+</span>
+<span class="o">|</span>    <span class="o">|</span>   <span class="n">Size</span> <span class="n">Info</span> <span class="k">for</span>       <span class="o">|</span>
+<span class="o">|</span>    <span class="o">|</span>      <span class="n">Section</span> <span class="n">N</span>        <span class="o">|</span>
+<span class="o">+----+-----------------------+</span>
+<span class="n">P</span>    <span class="o">|</span>       <span class="n">Section</span> <span class="mi">1</span>       <span class="o">|</span>
+<span class="n">A</span>    <span class="o">+-----------------------+</span>
+<span class="n">Y</span>    <span class="o">|</span>       <span class="n">Section</span> <span class="mi">2</span>       <span class="o">|</span>
+<span class="n">L</span>    <span class="o">+-----------------------+</span>
+<span class="n">O</span>    <span class="o">|</span>          <span class="o">...</span>          <span class="o">|</span>
+<span class="n">A</span>    <span class="o">+-----------------------+</span>
+<span class="n">D</span>    <span class="o">|</span>       <span class="n">Section</span> <span class="n">N</span>       <span class="o">|</span>
+<span class="o">+----+-----------------------+</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Sections might be padded to meet platform-specific alignment requirements.
+For simplicity, header fields and data sections solely for padding purpose
+are omitted in the data layout graph above and the rest of this document.</p>
+</div>
+</section>
+<section id="header">
+<h3><a class="toc-backref" href="#id14" role="doc-backlink">Header</a><a class="headerlink" href="#header" title="Permalink to this heading">¶</a></h3>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">Magic</span></code></dt><dd><p>With the magic number, data consumer could detect profile format and
+endianness of the data, and tells whether/how to continue reading.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Version</span></code></dt><dd><p>The lower 32 bits specifies the actual version and the most significant 32
+bits specify the variant types of the profile. IR-based instrumentation PGO
+and context-sensitive IR-based instrumentation PGO are two variant types.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">BinaryIdsSize</span></code></dt><dd><p>The byte size of binary id section.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">NumData</span></code></dt><dd><p>The number of per-function profile data control structures. The byte size of
+profile data section could be computed with this field.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">NumCounter</span></code></dt><dd><p>The number of entries in the profile counter section. The byte size of counter
+section could be computed with this field.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">NumBitmapBytes</span></code></dt><dd><p>The number of bytes in the profile bitmap section.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">NamesSize</span></code></dt><dd><p>The number of bytes in the name section.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">CountersDelta</span></code></dt><dd><p>Records the in-memory address difference between the data and counter section,
+i.e., <cite>start(__llvm_prf_cnts) - start(__llvm_prf_data)</cite>. It’s used jointly
+with the in-memory address difference of profile data record and its counter
+to find the counter of a profile data record. Check out <a class="reference internal" href="#calculation-of-counter-offset">calculation-of-counter-offset</a>
+for details.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">BitmapDelta</span></code></dt><dd><p>Records the in-memory address difference between the data and bitmap section,
+i.e., <cite>start(__llvm_prf_bits) - start(__llvm_prf_data)</cite>. It’s used jointly
+with the in-memory address difference of a profile data record and its bitmap
+to find the bitmap of a profile data record, in a similar way to how counters
+are referenced as explained by <a class="reference internal" href="#calculation-of-counter-offset">calculation-of-counter-offset</a> .</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">NamesDelta</span></code></dt><dd><p>Records the in-memory address of name section. Not used except for raw profile
+reader error checking.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">ValueKindLast</span></code></dt><dd><p>Records the number of value kinds. As of writing, two kinds of value profiles
+are supported. <cite>IndirectCallTarget</cite> is to profile the frequent callees of
+indirect call instructions and <cite>MemOPSize</cite> is for memory intrinsic function
+size profiling.</p>
+<p>The number of value kinds affects the byte size of per function profile data
+control structure.</p>
+</dd>
+</dl>
+</section>
+<section id="payload-sections">
+<h3><a class="toc-backref" href="#id15" role="doc-backlink">Payload Sections</a><a class="headerlink" href="#payload-sections" title="Permalink to this heading">¶</a></h3>
+<section id="binary-ids">
+<h4><a class="toc-backref" href="#id16" role="doc-backlink">Binary Ids</a><a class="headerlink" href="#binary-ids" title="Permalink to this heading">¶</a></h4>
+<p>Stores the binary ids of the instrumented binaries to associate binaries with
+profiles for source code coverage. See <a class="reference external" href="https://lists.llvm.org/pipermail/llvm-dev/2021-June/151154.html">Binary Id RFC</a> for introduction.</p>
+</section>
+<section id="profile-data">
+<h4><a class="toc-backref" href="#id17" role="doc-backlink">Profile Data</a><a class="headerlink" href="#profile-data" title="Permalink to this heading">¶</a></h4>
+<p>This section stores per-function profile data control structure. The in-memory
+representation of the control structure is <cite>__llvm_profile_data</cite> and the fields
+are defined by <cite>INSTRPROFDATA</cite> macro. Some fields are used to reference data
+from other sections in the profile. The fields are documented as follows:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">NameRef</span></code></dt><dd><p>The MD5 of the function’s PGO name. PGO name has the format
+<cite>[&lt;filepath&gt;&lt;delimiter&gt;]&lt;linkage-or-mangled-name&gt;</cite> where <cite>&lt;filepath&gt;</cite> and
+<cite>&lt;delimiter&gt;</cite> is provided for local-linkage functions to tell possibly
+identical functions.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">FuncHash</span></code></dt><dd><p>A fingerprint of the function’s control flow graph.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">CounterPtr</span></code></dt><dd><p>The in-memory address difference between profile data and its corresponding
+counters.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">BitmapPtr</span></code></dt><dd><p>The in-memory address difference between profile data and its bitmap.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">FunctionPointer</span></code></dt><dd><p>Records the function address when instrumented binary runs. This is used to
+map the profiled callee address of indirect calls to the <cite>NameRef</cite> during
+conversion from raw to indexed profiles.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Values</span></code></dt><dd><p>Represents value profiles in a two dimensional array. The number of elements
+in the first dimension is the number of instrumented value sites across all
+kinds. Each element in the first dimension is the head of a linked list, and
+the each element in the second dimension is linked list element, carrying
+<cite>&lt;profiled-value, count&gt;</cite> as payload. This is used by compiler runtime when
+writing out value profiles.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">NumCounters</span></code></dt><dd><p>The number of counters for the instrumented function.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">NumValueSites</span></code></dt><dd><p>This is an array of counters, and each counter represents the number of
+instrumented sites for a kind of value in the function.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">NumBitmapBytes</span></code></dt><dd><p>The number of bitmap bytes for the function.</p>
+</dd>
+</dl>
+</section>
+<section id="profile-counters">
+<h4><a class="toc-backref" href="#id18" role="doc-backlink">Profile Counters</a><a class="headerlink" href="#profile-counters" title="Permalink to this heading">¶</a></h4>
+<p>For PGO <a class="footnote-reference brackets" href="#id9" id="id2" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a>, the counters within an instrumented function are stored contiguously
+and in an order that is consistent with instrumentation points selection in the
+instrumentation pass.</p>
+<p id="calculation-of-counter-offset">So how are function counters associated with a function?</p>
+<p>Basically, the profile reader iterates per-function control structure (from the
+profile data section) and makes use of the recorded relative distances, as
+illustrated below.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>       <span class="o">+</span> <span class="o">--&gt;</span> <span class="n">start</span><span class="p">(</span><span class="n">__llvm_prf_data</span><span class="p">)</span> <span class="o">--&gt;</span> <span class="o">+---------------------+</span> <span class="o">------------+</span>
+       <span class="o">|</span>                                <span class="o">|</span>       <span class="n">Data</span> <span class="mi">1</span>        <span class="o">|</span>             <span class="o">|</span>
+       <span class="o">|</span>                                <span class="o">+---------------------+</span>  <span class="o">=====||</span>    <span class="o">|</span>
+       <span class="o">|</span>                                <span class="o">|</span>       <span class="n">Data</span> <span class="mi">2</span>        <span class="o">|</span>       <span class="o">||</span>    <span class="o">|</span>
+       <span class="o">|</span>                                <span class="o">+---------------------+</span>       <span class="o">||</span>    <span class="o">|</span>
+       <span class="o">|</span>                                <span class="o">|</span>        <span class="o">...</span>          <span class="o">|</span>       <span class="o">||</span>    <span class="o">|</span>
+<span class="n">Counter</span><span class="o">|</span>                                <span class="o">+---------------------+</span>       <span class="o">||</span>    <span class="o">|</span>
+ <span class="n">Delta</span> <span class="o">|</span>                                <span class="o">|</span>       <span class="n">Data</span> <span class="n">N</span>        <span class="o">|</span>       <span class="o">||</span>    <span class="o">|</span>
+       <span class="o">|</span>                                <span class="o">+---------------------+</span>       <span class="o">||</span>    <span class="o">|</span>   <span class="n">CounterPtr1</span>
+       <span class="o">|</span>                                                              <span class="o">||</span>    <span class="o">|</span>
+       <span class="o">|</span>                                              <span class="n">CounterPtr2</span>     <span class="o">||</span>    <span class="o">|</span>
+       <span class="o">|</span>                                                              <span class="o">||</span>    <span class="o">|</span>
+       <span class="o">|</span>                                                              <span class="o">||</span>    <span class="o">|</span>
+       <span class="o">+</span> <span class="o">--&gt;</span> <span class="n">start</span><span class="p">(</span><span class="n">__llvm_prf_cnts</span><span class="p">)</span> <span class="o">--&gt;</span> <span class="o">+---------------------+</span>       <span class="o">||</span>    <span class="o">|</span>
+                                        <span class="o">|</span>        <span class="o">...</span>          <span class="o">|</span>       <span class="o">||</span>    <span class="o">|</span>
+                                        <span class="o">+---------------------+</span>  <span class="o">-----||----+</span>
+                                        <span class="o">|</span>      <span class="n">Counter</span> <span class="mi">1</span>      <span class="o">|</span>       <span class="o">||</span>
+                                        <span class="o">+---------------------+</span>       <span class="o">||</span>
+                                        <span class="o">|</span>        <span class="o">...</span>          <span class="o">|</span>       <span class="o">||</span>
+                                        <span class="o">+---------------------+</span>  <span class="o">=====||</span>
+                                        <span class="o">|</span>      <span class="n">Counter</span> <span class="mi">2</span>      <span class="o">|</span>
+                                        <span class="o">+---------------------+</span>
+                                        <span class="o">|</span>        <span class="o">...</span>          <span class="o">|</span>
+                                        <span class="o">+---------------------+</span>
+                                        <span class="o">|</span>      <span class="n">Counter</span> <span class="n">N</span>      <span class="o">|</span>
+                                        <span class="o">+---------------------+</span>
+</pre></div>
+</div>
+<p>In the graph,</p>
+<ul class="simple">
+<li><p>The profile header records <cite>CounterDelta</cite> with the value as <cite>start(__llvm_prf_cnts) - start(__llvm_prf_data)</cite>.
+We will call it <cite>CounterDeltaInitVal</cite> below for convenience.</p></li>
+<li><p>For each profile data record, <cite>CounterPtrN</cite> is recorded as <cite>start(Counter) - start(ProfileData)</cite>.</p></li>
+</ul>
+<p>Each time the reader advances to the next data record, it updates <cite>CounterDelta</cite>
+to minus the size of one <cite>ProfileData</cite>.</p>
+<p>For the counter corresponding to the first data record, the byte offset
+relative to the start of the counter section is calculated as <cite>CounterPtr1 - CounterDeltaInitVal</cite>.
+When profile reader advances to the second data record, note <cite>CounterDelta</cite>
+is updated to <cite>CounterDeltaInitVal - sizeof(ProfileData)</cite>.
+Thus the byte offset relative to the start of the counter section is calculated
+as <cite>CounterPtr2 - (CounterDeltaInitVal - sizeof(ProfileData))</cite>.</p>
+</section>
+<section id="bitmap">
+<h4><a class="toc-backref" href="#id19" role="doc-backlink">Bitmap</a><a class="headerlink" href="#bitmap" title="Permalink to this heading">¶</a></h4>
+<p>This section is used for source-based MC/DC code coverage. Check out <a class="reference external" href="https://discourse.llvm.org/t/rfc-source-based-mc-dc-code-coverage/59244">Bitmap RFC</a>
+if interested.</p>
+</section>
+<section id="names">
+<h4><a class="toc-backref" href="#id20" role="doc-backlink">Names</a><a class="headerlink" href="#names" title="Permalink to this heading">¶</a></h4>
+<p>This section contains possibly compressed concatenated string of functions’ PGO
+names. If compressed, zlib compression algorithm is used.</p>
+<p>Function names serve as keys in the PGO data hash table when raw profiles are
+converted into indexed profiles. They are also crucial for <cite>llvm-profdata</cite> to
+show the profiles in a human-readable way.</p>
+</section>
+<section id="value-profile-data">
+<h4><a class="toc-backref" href="#id21" role="doc-backlink">Value Profile Data</a><a class="headerlink" href="#value-profile-data" title="Permalink to this heading">¶</a></h4>
+<p>This section contains the profile data for value profiling.</p>
+<p>The value profiles corresponding to a profile data are serialized contiguously
+as one record, and value profile records are stored in the same order as the
+respective profile data, such that a raw profile reader advances the pointer to
+profile data and the pointer to value profile records simutaneously <a class="footnote-reference brackets" href="#id10" id="id3" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a> to find
+value profiles for a per function, per cfg fingerprint profile data.</p>
+</section>
+</section>
+</section>
+<section id="indexed-pgo-profile-format">
+<h2><a class="toc-backref" href="#id22" role="doc-backlink">Indexed PGO Profile Format</a><a class="headerlink" href="#indexed-pgo-profile-format" title="Permalink to this heading">¶</a></h2>
+<section id="id4">
+<h3><a class="toc-backref" href="#id23" role="doc-backlink">General Storage Layout</a><a class="headerlink" href="#id4" title="Permalink to this heading">¶</a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>                <span class="o">+-----------------------+---+</span>
+                <span class="o">|</span>        <span class="n">Magic</span>          <span class="o">|</span>   <span class="o">|</span>
+                <span class="o">+-----------------------+</span>   <span class="o">|</span>
+                <span class="o">|</span>        <span class="n">Version</span>        <span class="o">|</span>   <span class="o">|</span>
+                <span class="o">+-----------------------+</span>   <span class="o">|</span>
+                <span class="o">|</span>        <span class="n">HashType</span>       <span class="o">|</span>   <span class="n">H</span>
+                <span class="o">+-----------------------+</span>   <span class="n">E</span>
+        <span class="o">+-------|</span>       <span class="n">HashOffset</span>      <span class="o">|</span>   <span class="n">A</span>
+        <span class="o">|</span>       <span class="o">+-----------------------+</span>   <span class="n">D</span>
+    <span class="o">+-----------|</span>     <span class="n">MemProfOffset</span>     <span class="o">|</span>   <span class="n">E</span>
+    <span class="o">|</span>   <span class="o">|</span>       <span class="o">+-----------------------+</span>   <span class="n">R</span>
+    <span class="o">|</span>   <span class="o">|</span>    <span class="o">+--|</span>     <span class="n">BinaryIdOffset</span>    <span class="o">|</span>   <span class="o">|</span>
+    <span class="o">|</span>   <span class="o">|</span>    <span class="o">|</span>  <span class="o">+-----------------------+</span>   <span class="o">|</span>
+<span class="o">+---------------|</span>      <span class="n">TemporalProf</span><span class="o">-</span>    <span class="o">|</span>   <span class="o">|</span>
+<span class="o">|</span>   <span class="o">|</span>   <span class="o">|</span>    <span class="o">|</span>  <span class="o">|</span>      <span class="n">TracesOffset</span>     <span class="o">|</span>   <span class="o">|</span>
+<span class="o">|</span>   <span class="o">|</span>   <span class="o">|</span>    <span class="o">|</span>  <span class="o">+-----------------------+---+</span>
+<span class="o">|</span>   <span class="o">|</span>   <span class="o">|</span>    <span class="o">|</span>  <span class="o">|</span>   <span class="n">Profile</span> <span class="n">Summary</span>     <span class="o">|</span>   <span class="o">|</span>
+<span class="o">|</span>   <span class="o">|</span>   <span class="o">|</span>    <span class="o">|</span>  <span class="o">+-----------------------+</span>   <span class="n">P</span>
+<span class="o">|</span>   <span class="o">|</span>   <span class="o">+------&gt;|</span>  <span class="n">Function</span> <span class="n">PGO</span> <span class="n">data</span>    <span class="o">|</span>   <span class="n">A</span>
+<span class="o">|</span>   <span class="o">|</span>        <span class="o">|</span>  <span class="o">+-----------------------+</span>   <span class="n">Y</span>
+<span class="o">|</span>   <span class="o">+----------</span> <span class="o">|</span>  <span class="n">MemProf</span> <span class="n">profile</span> <span class="n">data</span> <span class="o">|</span>   <span class="n">L</span>
+<span class="o">|</span>            <span class="o">|</span>  <span class="o">+-----------------------+</span>   <span class="n">O</span>
+<span class="o">|</span>            <span class="o">+--|</span>    <span class="n">Binary</span> <span class="n">Ids</span>         <span class="o">|</span>   <span class="n">A</span>
+<span class="o">|</span>               <span class="o">+-----------------------+</span>   <span class="n">D</span>
+<span class="o">+--------------&gt;|</span>  <span class="n">Temporal</span> <span class="n">profiles</span>    <span class="o">|</span>   <span class="o">|</span>
+                <span class="o">+-----------------------+---+</span>
+</pre></div>
+</div>
+</section>
+<section id="id5">
+<h3><a class="toc-backref" href="#id24" role="doc-backlink">Header</a><a class="headerlink" href="#id5" title="Permalink to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">Magic</span></code></dt><dd><p>The purpose of the magic number is to be able to quickly tell if the profile
+is an indexed profile.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Version</span></code></dt><dd><p>Similar to raw profile version, the lower 32 bits specifies the version of the
+indexed profile and the most significant 32 bits are reserved to specify the
+variant types of the profile.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">HashType</span></code></dt><dd><p>The hashing scheme for on-disk hash table keys. Only MD5 hashing is used as of
+writing.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">HashOffset</span></code></dt><dd><p>An on-disk hash table stores the per-function profile records. It records the
+offset of this hash table’s metadata (i.e., the number of buckets and entries),
+which follows right after the payload of the entire hash table for
+deserialization.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">MemProfOffset</span></code></dt><dd><p>Records the byte offset of MemProf profiling data.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">BinaryIdOffset</span></code></dt><dd><p>Records the byte offset of binary id sections.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">TemporalProfTracesOffset</span></code></dt><dd><p>Records the byte offset of temporal profiles.</p>
+</dd>
+</dl>
+</section>
+<section id="id6">
+<h3><a class="toc-backref" href="#id25" role="doc-backlink">Payload Sections</a><a class="headerlink" href="#id6" title="Permalink to this heading">¶</a></h3>
+<section id="cs-profile-summary">
+<h4><a class="toc-backref" href="#id26" role="doc-backlink">(CS) Profile Summary</a><a class="headerlink" href="#cs-profile-summary" title="Permalink to this heading">¶</a></h4>
+<p>This section is right after profile header. It stores the serialized profile
+summary. For context-sensitive IR-based instrumentation PGO, this section stores
+an additional profile summary corresponding to the context-sensitive profiles.</p>
+</section>
+<section id="function-pgo-data">
+<h4><a class="toc-backref" href="#id27" role="doc-backlink">Function PGO data</a><a class="headerlink" href="#function-pgo-data" title="Permalink to this heading">¶</a></h4>
+<p>This section stores functions and their PGO profiling data as an on-disk hash
+table. The key of a hash table entry is function’s PGO name, and the in-memory
+representation of value is a map. The key of this map is the fingerprint of CFG,
+and the value is a C++ struct named <cite>llvm::InstrProfRecord</cite>. The C++ struct
+collects the profiling information like counters and value profiles.</p>
+</section>
+<section id="memprof-profile-data">
+<h4><a class="toc-backref" href="#id28" role="doc-backlink">MemProf Profile data</a><a class="headerlink" href="#memprof-profile-data" title="Permalink to this heading">¶</a></h4>
+<p>This section stores function’s memory profiling data. See
+<a class="reference external" href="https://lists.llvm.org/pipermail/llvm-dev/2021-September/153007.html">MemProf binary serialization format RFC</a> for the design.</p>
+</section>
+<section id="id7">
+<h4><a class="toc-backref" href="#id29" role="doc-backlink">Binary Ids</a><a class="headerlink" href="#id7" title="Permalink to this heading">¶</a></h4>
+<p>The section is used to carry on binary-id information from raw profiles.</p>
+</section>
+<section id="temporal-profile-traces">
+<h4><a class="toc-backref" href="#id30" role="doc-backlink">Temporal Profile Traces</a><a class="headerlink" href="#temporal-profile-traces" title="Permalink to this heading">¶</a></h4>
+<p>The section is used to carry on temporal profile information from raw profiles.
+See <a class="reference external" href="https://discourse.llvm.org/t/rfc-temporal-profiling-extension-for-irpgo/68068">Temporal profiling RFC</a> for the design.</p>
+</section>
+</section>
+</section>
+<section id="profile-data-usage">
+<h2><a class="toc-backref" href="#id31" role="doc-backlink">Profile Data Usage</a><a class="headerlink" href="#profile-data-usage" title="Permalink to this heading">¶</a></h2>
+<p><cite>llvm-profdata</cite> is the command line tool to display and process instrumentation-
+based profile data. For supported usages, check out <a class="reference external" href="https://llvm.org/docs/CommandGuide/llvm-profdata.html">llvm-profdata documentation</a>.</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id8" role="note">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">1</a><span class="fn-bracket">]</span></span>
+<p>A raw profile file could contain the concatenation of multiple raw
+profiles. Raw profile reader could parse all raw profiles from the file
+correctly.</p>
+</aside>
+<aside class="footnote brackets" id="id9" role="note">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">2</a><span class="fn-bracket">]</span></span>
+<p>The counter section is used by a few variant types (like temporal
+profiling) and might have different semantics there.</p>
+</aside>
+<aside class="footnote brackets" id="id10" role="note">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">3</a><span class="fn-bracket">]</span></span>
+<p>The step size of data pointer is the <cite>sizeof(ProfileData)</cite>, and the step
+size of value profile pointer is calcuated based on the number of collected
+values.</p>
+</aside>
+</aside>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="ReportingGuide.html" title="LLVM CoC Incident Reporting Guide"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="Passes.html" title="LLVM’s Analysis and Transform Passes"
+             >previous</a> |</li>
+  <li><a href="https://llvm.org/">LLVM Home</a>&nbsp;|&nbsp;</li>
+  <li><a href="index.html">Documentation</a>&raquo;</li>
+
+          <li class="nav-item nav-item-1"><a href="UserGuides.html" >User Guides</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Instrumentation PGO Profile Format</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2003-2023, LLVM Project.
+      Last updated on 2023-12-20.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 5.3.0.
+    </div>
+  </body>
+</html>
