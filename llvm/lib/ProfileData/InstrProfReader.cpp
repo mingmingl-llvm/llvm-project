@@ -38,6 +38,8 @@
 
 using namespace llvm;
 
+static cl::opt<bool> SwapFuncPointer("swap-func-ptr", cl::init(false));
+
 // Extracts the variant information from the top 32 bits in the version and
 // returns an enum specifying the variants present.
 static InstrProfKind getProfileKindFromVersion(uint64_t Version) {
@@ -539,7 +541,7 @@ Error RawInstrProfReader<IntPtrT>::createSymtab(InstrProfSymtab &Symtab) {
     const IntPtrT FPtr = swap(I->FunctionPointer);
     if (!FPtr)
       continue;
-    Symtab.mapAddress(FPtr, I->NameRef);
+    Symtab.mapAddress(FPtr, SwapFuncPointer ? swap(I->NameRef) : I->NameRef);
   }
   return success();
 }
