@@ -991,6 +991,33 @@ void getValueForSiteInstrProf(const void *R, InstrProfValueData *Dst,
   reinterpret_cast<const InstrProfRecord *>(R)->getValueForSite(Dst, K, S);
 }
 
+static void print_bytes(const void *p, size_t len)
+{
+    size_t i;
+    printf("(");
+    for (i = 0; i < len; ++i)
+        printf("%02x", ((unsigned char*)p)[i]);
+    printf(")\n");
+}
+
+static void printByteSwappedVal(StringRef key, uint64_t Val) {
+  printf("[valueprof]%s is", key.str().c_str());
+  uint64_t ByteSwappedVal = llvm::byteswap(Val);
+  print_bytes(&ByteSwappedVal, 8);
+}
+
+static void printByteSwappedValInt32(StringRef key, uint32_t Val) {
+  printf("[valueprof]%s is", key.str().c_str());
+  uint32_t ByteSwappedVal = llvm::byteswap(Val);
+  print_bytes(&ByteSwappedVal, 4);
+}
+
+static void printByteSwappedValInt16(StringRef key, uint16_t Val) {
+  printf("[valueprof]%s is", key.str().c_str());
+  uint16_t ByteSwappedVal = llvm::byteswap(Val);
+  print_bytes(&ByteSwappedVal, 2);
+}
+
 ValueProfData *allocValueProfDataInstrProf(size_t TotalSizeInBytes) {
   ValueProfData *VD =
       (ValueProfData *)(new (::operator new(TotalSizeInBytes)) ValueProfData());
@@ -1043,22 +1070,32 @@ void ValueProfRecord::deserializeTo(InstrProfRecord &Record,
 void ValueProfRecord::swapBytes(llvm::endianness Old, llvm::endianness New) {
   using namespace support;
 
-  if (Old == New)
-    return;
+  assert(Old == New);
+  //if (Old == New)
+  //  return;
 
   if (llvm::endianness::native != Old) {
     sys::swapByteOrder<uint32_t>(NumValueSites);
     sys::swapByteOrder<uint32_t>(Kind);
   }
+  printByteSwappedValInt32("Kind", Kind);
+  printByteSwappedValInt32("NumValueSites", NumValueSites);
+
   uint32_t ND = getValueProfRecordNumValueData(this);
   InstrProfValueData *VD = getValueProfRecordValueData(this);
 
+  uint32_t SiteCountArraySize = (char*)(VD) - (char*)(this);
+  printf("SiteCountArrayWithPadding size is %u\n", SiteCountArraySize);
+
   // No need to swap byte array: SiteCountArrray.
   for (uint32_t I = 0; I < ND; I++) {
-    sys::swapByteOrder<uint64_t>(VD[I].Value);
-    sys::swapByteOrder<uint64_t>(VD[I].Count);
+    printByteSwappedVal("Value", VD[I].Value);
+    printByteSwappedVal("Count", VD[I].Count);
+
+    //sys::swapByteOrder<uint64_t>(VD[I].Value);
+    //sys::swapByteOrder<uint64_t>(VD[I].Count);
   }
-  if (llvm::endianness::native == Old) {
+  if (llvm::endianness::native != Old) {
     sys::swapByteOrder<uint32_t>(NumValueSites);
     sys::swapByteOrder<uint32_t>(Kind);
   }
@@ -1125,6 +1162,7 @@ ValueProfData::getValueProfData(const unsigned char *D,
 
   const unsigned char *Header = D;
   uint32_t TotalSize = swapToHostOrder<uint32_t>(Header, Endianness);
+  printByteSwappedValInt32("TotalValueProfileSize", TotalSize);
   if (D + TotalSize > BufferEnd)
     return make_error<InstrProfError>(instrprof_error::too_large);
 
@@ -1143,11 +1181,14 @@ ValueProfData::getValueProfData(const unsigned char *D,
 void ValueProfData::swapBytesToHost(llvm::endianness Endianness) {
   using namespace support;
 
-  if (Endianness == llvm::endianness::native)
-    return;
+  assert(Endianness == llvm::endianness::native);
+  //if (Endianness == llvm::endianness::native)
+  //  return;
 
-  sys::swapByteOrder<uint32_t>(TotalSize);
-  sys::swapByteOrder<uint32_t>(NumValueKinds);
+  printByteSwappedValInt32("TotalSize", TotalSize);
+  printByteSwappedValInt32("NumValueKinds", NumValueKinds);
+  //sys::swapByteOrder<uint32_t>(TotalSize);
+  //sys::swapByteOrder<uint32_t>(NumValueKinds);
 
   ValueProfRecord *VR = getFirstValueProfRecord(this);
   for (uint32_t K = 0; K < NumValueKinds; K++) {

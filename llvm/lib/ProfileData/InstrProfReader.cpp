@@ -95,6 +95,8 @@ readBinaryIdsInternal(const MemoryBuffer &DataBuffer,
                       const llvm::endianness Endian) {
   using namespace support;
 
+  printf("Binary Id Size is %" PRId64 "\n", BinaryIdsSize);
+
   if (BinaryIdsSize == 0)
     return Error::success();
 
@@ -497,6 +499,8 @@ Error RawInstrProfReader<IntPtrT>::readHeader() {
     return error(instrprof_error::bad_magic);
   if (DataBuffer->getBufferSize() < sizeof(RawInstrProf::Header))
     return error(instrprof_error::bad_header);
+
+  printf("Header size is %lu\n", sizeof(RawInstrProf::Header));
   auto *Header = reinterpret_cast<const RawInstrProf::Header *>(
       DataBuffer->getBufferStart());
   ShouldSwapBytes = Header->Magic != RawInstrProf::getMagic<IntPtrT>();
@@ -531,8 +535,19 @@ Error RawInstrProfReader<IntPtrT>::readNextHeader(const char *CurrentPos) {
   return readHeader(*Header);
 }
 
+static void print_bytes(const void *p, size_t len)
+{
+    size_t i;
+    printf("(");
+    for (i = 0; i < len; ++i)
+        printf("%02x", ((unsigned char*)p)[i]);
+    printf(")\n");
+}
+
 template <class IntPtrT>
 Error RawInstrProfReader<IntPtrT>::createSymtab(InstrProfSymtab &Symtab) {
+  printf("Names\n");
+  print_bytes(NamesStart, NamesEnd - NamesStart);
   if (Error E = Symtab.create(StringRef(NamesStart, NamesEnd - NamesStart)))
     return error(std::move(E));
   for (const RawInstrProf::ProfileData<IntPtrT> *I = Data; I != DataEnd; ++I) {
@@ -544,10 +559,49 @@ Error RawInstrProfReader<IntPtrT>::createSymtab(InstrProfSymtab &Symtab) {
   return success();
 }
 
+static void printVal(StringRef key, uint64_t Val) {
+  printf("%s is %" PRId64 "\n", key.str().c_str(), Val);
+}
+
+static void printByteSwappedVal(StringRef key, uint64_t Val) {
+  printf("[hex]%s is", key.str().c_str());
+  uint64_t ByteSwappedVal = llvm::byteswap(Val);
+  print_bytes(&ByteSwappedVal, 8);
+}
+
+static void printByteSwappedValInt32(StringRef key, uint32_t Val) {
+  printf("[hex]%s is", key.str().c_str());
+  uint32_t ByteSwappedVal = llvm::byteswap(Val);
+  print_bytes(&ByteSwappedVal, 4);
+}
+
+static void printByteSwappedValInt16(StringRef key, uint16_t Val) {
+  printf("[hex]%s is", key.str().c_str());
+  uint16_t ByteSwappedVal = llvm::byteswap(Val);
+  print_bytes(&ByteSwappedVal, 2);
+}
+
+
+
 template <class IntPtrT>
 Error RawInstrProfReader<IntPtrT>::readHeader(
     const RawInstrProf::Header &Header) {
   Version = swap(Header.Version);
+  printByteSwappedVal("Magic", Header.Magic);
+  printByteSwappedVal("Version", Version);
+  printByteSwappedVal("BinaryIdsSize", Header.BinaryIdsSize);
+  printByteSwappedVal("NumData", Header.NumData);
+  printByteSwappedVal("PaddingBytesBeforeCounters", Header.PaddingBytesBeforeCounters);
+  printByteSwappedVal("NumCounters", Header.NumCounters);
+  printByteSwappedVal("PaddingBytesAfterCounters", Header.PaddingBytesAfterCounters);
+  printByteSwappedVal("NumBitmapBytes", Header.NumBitmapBytes);
+  printByteSwappedVal("PaddingBytesAfterBitmapBytes", Header.PaddingBytesAfterBitmapBytes);
+  printByteSwappedVal("NamesSize", Header.NamesSize);
+  printByteSwappedVal("CountersDelta", Header.CountersDelta);
+  printByteSwappedVal("BitmapDelta", Header.BitmapDelta);
+  printByteSwappedVal("NamesDelta", Header.NamesDelta);
+  printByteSwappedVal("ValueKindLast", Header.ValueKindLast);
+
   if (GET_VERSION(Version) != RawInstrProf::Version)
     return error(instrprof_error::raw_profile_version_mismatch,
                  ("Profile uses raw profile format version = " +
@@ -563,6 +617,7 @@ Error RawInstrProfReader<IntPtrT>::readHeader(
       reinterpret_cast<const uint8_t *>(&Header) + sizeof(RawInstrProf::Header);
   const uint8_t *BinaryIdEnd = BinaryIdStart + BinaryIdSize;
   const uint8_t *BufferEnd = (const uint8_t *)DataBuffer->getBufferEnd();
+  printVal("BinaryIdSize", BinaryIdSize);
   if (BinaryIdSize % sizeof(uint64_t) || BinaryIdEnd > BufferEnd)
     return error(instrprof_error::bad_header);
   if (BinaryIdSize != 0) {
@@ -590,13 +645,24 @@ Error RawInstrProfReader<IntPtrT>::readHeader(
   // Profile data starts after profile header and binary ids if exist.
   ptrdiff_t DataOffset = sizeof(RawInstrProf::Header) + BinaryIdSize;
   ptrdiff_t CountersOffset = DataOffset + DataSize + PaddingBytesBeforeCounters;
+  printVal("DataSize", DataSize);
   ptrdiff_t BitmapOffset =
       CountersOffset + CountersSize + PaddingBytesAfterCounters;
+  printVal("CounterSize", CountersSize);
   ptrdiff_t NamesOffset =
       BitmapOffset + NumBitmapBytes + PaddingBytesAfterBitmapBytes;
+  printVal("NumBitmapBytes", NumBitmapBytes);
   ptrdiff_t ValueDataOffset = NamesOffset + NamesSize + PaddingSize;
 
+  printVal("NamesSize", NamesSize);
+  printVal("NamesPaddingSize", PaddingSize);
+
   auto *Start = reinterpret_cast<const char *>(&Header);
+
+  printVal("ValueProfiles", DataBuffer->getBufferEnd() - Start - ValueDataOffset);
+
+  printVal("ProfileByteSize", DataBuffer->getBufferEnd() - Start);
+
   if (Start + ValueDataOffset > DataBuffer->getBufferEnd())
     return error(instrprof_error::bad_header);
 
@@ -620,6 +686,16 @@ Error RawInstrProfReader<IntPtrT>::readHeader(
 
   CountersStart = Start + CountersOffset;
   CountersEnd = CountersStart + CountersSize;
+
+  printf("Counters Begin\n");
+  for (int i = 0; i < Header.NumCounters; i++) {
+    const char* TmpCountersStart = CountersStart + i * 8;
+    uint64_t TmpCounterVal = *reinterpret_cast<const uint64_t *>(TmpCountersStart);
+    printf("TmpCountersVal is %" PRIu64 "\n", TmpCounterVal);
+    printByteSwappedVal("CounterVal", TmpCounterVal);
+  }
+  printf("Counters Printed\n");
+
   BitmapStart = Start + BitmapOffset;
   BitmapEnd = BitmapStart + NumBitmapBytes;
   ValueDataStart = reinterpret_cast<const uint8_t *>(Start + ValueDataOffset);
@@ -812,7 +888,25 @@ Error RawInstrProfReader<IntPtrT>::readNextRecord(NamedInstrProfRecord &Record) 
   // Read value data and set Record.
   if (Error E = readValueProfilingData(Record))
     return error(std::move(E));
+   
+  // print data in reverse byte order
+  printByteSwappedVal("NameRef", Data->NameRef);
+  printByteSwappedVal("FuncHash", Data->FuncHash);
+  printByteSwappedVal("CounterPtr", Data->CounterPtr);
+  printByteSwappedVal("BitmapPtr", Data->BitmapPtr);
+  printByteSwappedVal("FunctionPointer", Data->FunctionPointer);
+  printByteSwappedVal("Values", Data->Values);
+  printByteSwappedValInt32("NumCounters", Data->NumCounters);
+  printByteSwappedValInt16("NumValueSites[0]", Data->NumValueSites[0]);
+  printByteSwappedValInt16("NumValueSites[1]", Data->NumValueSites[1]);
+  printByteSwappedValInt32("NumBitmapBytes", Data->NumBitmapBytes);
 
+  // print counter in reverse byte order
+
+  // createSymtab print names
+
+  // print value profiles
+  
   // Iterate.
   advanceData();
   return success();
