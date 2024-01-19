@@ -225,6 +225,12 @@ cl::opt<bool> EnableVTableValueProfiling(
              "the types of a C++ pointer. The information is used in indirect "
              "call promotion to do selective vtable-based comparison."));
 
+cl::opt<bool> EnableVTableCmp(
+    "enable-vtable-cmp", cl::init(false), cl::Hidden,
+    cl::desc(
+        "If true, pgo-icall-prom pass will select the best comparison sequence "
+        "between function-based comparison and vtable-based comparison."));
+
 std::string getInstrProfSectionName(InstrProfSectKind IPSK,
                                     Triple::ObjectFormatType OF,
                                     bool AddSegmentInfo) {
@@ -481,7 +487,9 @@ Error InstrProfSymtab::create(Module &M, bool InLTO) {
     Types.clear();
     G.getMetadata(LLVMContext::MD_type, Types);
     if (!Types.empty()) {
-      MD5VTableMap.emplace_back(G.getGUID(), &G);
+      if (Error E = addVTableWithName(
+              G, getIRPGOObjectName(G, InLTO, getPGOVTableNameMetadata(G))))
+        return E;
     }
   }
   Sorted = false;
@@ -590,6 +598,32 @@ Error InstrProfSymtab::addFuncWithName(Function &F, StringRef PGOFuncName) {
       return E;
     MD5FuncMap.emplace_back(Function::getGUID(OtherFuncName), &F);
   }
+  return Error::success();
+}
+
+Error InstrProfSymtab::addVTableWithName(GlobalVariable &VTable,
+                                         StringRef VTablePGOName) {
+  // Set up mapping from vtable's GUID to its PGO name.
+  if (Error E = addVTableName(VTablePGOName))
+    return E;
+
+  MD5VTableMap.emplace_back(GlobalValue::getGUID(VTablePGOName), &VTable);
+
+  // NOTE: `-funique-internal-linkage-names` doesn't uniqufy vtables, so no
+  // need to check ".__uniq."
+
+  // If a local-linkage vtable is promoted to have external linkage in ThinLTO,
+  // it will have `.llvm.` in its name. Use the name before externalization.
+  const std::string LLVMSuffix = ".llvm.";
+  int pos = VTablePGOName.find(LLVMSuffix, 0);
+  if (pos != std::string::npos && pos != 0) {
+    StringRef VTableNameBeforeExt = VTablePGOName.substr(0, pos);
+    if (Error E = addVTableName(VTableNameBeforeExt))
+      return E;
+    MD5VTableMap.emplace_back(GlobalValue::getGUID(VTableNameBeforeExt),
+                              &VTable);
+  }
+
   return Error::success();
 }
 
@@ -1373,6 +1407,10 @@ MDNode *getPGOFuncNameMetadata(const Function &F) {
   return F.getMetadata(getPGOFuncNameMetadataName());
 }
 
+MDNode *getPGOVTableNameMetadata(const GlobalVariable &GV) {
+  return GV.getMetadata(getPGOVTableNameMetadataName());
+}
+
 void createPGOFuncNameMetadata(Function &F, StringRef PGOFuncName) {
   // Only for internal linkage functions.
   if (PGOFuncName == F.getName())
@@ -1383,6 +1421,18 @@ void createPGOFuncNameMetadata(Function &F, StringRef PGOFuncName) {
   LLVMContext &C = F.getContext();
   MDNode *N = MDNode::get(C, MDString::get(C, PGOFuncName));
   F.setMetadata(getPGOFuncNameMetadataName(), N);
+}
+
+void createPGOVTableNameMetadata(GlobalVariable &GV, StringRef PGOVTableName) {
+  // Only for internal linkage functions.
+  if (PGOVTableName == GV.getName())
+    return;
+  // Don't create duplicated meta-data.
+  if (getPGOVTableNameMetadata(GV))
+    return;
+  LLVMContext &C = GV.getContext();
+  MDNode *N = MDNode::get(C, MDString::get(C, PGOVTableName));
+  GV.setMetadata(getPGOVTableNameMetadataName(), N);
 }
 
 bool needsComdatForCounter(const GlobalValue &GV, const Module &M) {

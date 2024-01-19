@@ -66,6 +66,20 @@ struct PGOIndirectCallVisitor : public InstVisitor<PGOIndirectCallVisitor> {
     }
   }
 
+  static Instruction *getAnnotatedVTableInstruction(CallBase *CB) {
+    assert(CB != nullptr && "Caller guaranteed");
+    LoadInst *LI = dyn_cast<LoadInst>(CB->getCalledOperand());
+
+    if (LI != nullptr) {
+      Value *FuncPtr = LI->getPointerOperand(); // GEP (or bitcast)
+      Value *VTablePtr = FuncPtr->stripInBoundsConstantOffsets();
+      if (VTablePtr != nullptr && isa<Instruction>(VTablePtr)) {
+        return cast<Instruction>(VTablePtr);
+      }
+    }
+    return nullptr;
+  }
+
 private:
   InstructionType Type;
 };

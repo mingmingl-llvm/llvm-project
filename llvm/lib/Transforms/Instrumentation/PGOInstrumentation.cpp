@@ -333,6 +333,9 @@ extern cl::opt<bool> DebugInfoCorrelate;
 // ProfileData/InstrProf.cpp: -enable-vtable-value-profiling=
 extern cl::opt<bool> EnableVTableValueProfiling;
 extern cl::opt<InstrProfCorrelator::ProfCorrelatorKind> ProfileCorrelate;
+// Command line option to enable vtable-based comparison in pass
+// `pgo-icall-prom`.
+extern cl::opt<bool> EnableVTableCmp;
 } // namespace llvm
 
 // Return a string describing the branch condition that can be
@@ -2177,6 +2180,23 @@ PreservedAnalyses PGOInstrumentationUse::run(Module &M,
   };
 
   auto *PSI = &MAM.getResult<ProfileSummaryAnalysis>(M);
+
+  if (EnableVTableCmp) {
+    SmallVector<MDNode *, 2> Types;
+    for (GlobalVariable &G : M.globals()) {
+      if (!G.hasName())
+        continue;
+      Types.clear();
+      G.getMetadata(LLVMContext::MD_type, Types);
+
+      // Attach the vtable's PGO name as a metadata here in the prelink
+      // optimizer pipeline, so the postlink optimizer pipeline could use
+      // consistent names as annotated (in the form of md5hash(name)) in the
+      // value profiles.
+      if (!Types.empty())
+        createPGOVTableNameMetadata(G, getPGOName(G, false /* InLTO*/));
+    }
+  }
 
   if (!annotateAllFunctions(M, ProfileFileName, ProfileRemappingFileName, *FS,
                             LookupTLI, LookupBPI, LookupBFI, PSI, IsCS))

@@ -302,8 +302,14 @@ getValueProfDataFromInst(const Instruction &Inst, InstrProfValueKind ValueKind,
 
 inline StringRef getPGOFuncNameMetadataName() { return "PGOFuncName"; }
 
+// FIXME: Use the same metadata string for functions and vtables.
+inline StringRef getPGOVTableNameMetadataName() { return "PGOVTableName"; }
+
 /// Return the PGOFuncName meta data associated with a function.
 MDNode *getPGOFuncNameMetadata(const Function &F);
+
+/// Return the PGOVTableName metadata associated with a global variable.
+MDNode *getPGOVTableNameMetadata(const GlobalVariable &GV);
 
 std::string getPGOName(const GlobalVariable &V, bool InLTO = false);
 
@@ -311,6 +317,12 @@ std::string getPGOName(const GlobalVariable &V, bool InLTO = false);
 /// function's raw name. This should only apply to internal linkage functions
 /// declared by users only.
 void createPGOFuncNameMetadata(Function &F, StringRef PGOFuncName);
+
+/// Create PGOVTableName meta data if its PGO name is different from vtable's
+/// raw name.
+/// FIXME: Generalize helper functions and reuse across functions and global
+/// variables.
+void createPGOVTableNameMetadata(GlobalVariable &V, StringRef PGOVTableName);
 
 /// Check if we can use Comdat for profile variables. This will eliminate
 /// the duplicated profile variables for Comdat functions.
@@ -462,7 +474,7 @@ private:
   // InstrProfWriter stores per function profile data (keyed by function names)
   // so it doesn't use a StringSet for function names.
   StringSet<> VTableNames;
-  // A map from MD5 keys to function name strings.
+  // A map from a symbol's GUID to its PGO name.
   std::vector<std::pair<uint64_t, StringRef>> MD5NameMap;
   // A map from MD5 keys to virtual table definitions. Only populated when
   // building the Symtab from a module.
@@ -485,6 +497,8 @@ private:
   }
 
   Error addFuncWithName(Function &F, StringRef PGOFuncName);
+
+  Error addVTableWithName(GlobalVariable &V, StringRef PGOVTableName);
 
   // If the symtab is created by a series of calls to \c addFuncName, \c
   // finalizeSymtab needs to be called before looking up function names.
@@ -568,6 +582,9 @@ public:
 
     // Record VTableName. InstrProfWriter uses this map. The comment around
     // class member explains why.
+    // FIXME: This set of vtable names is used by `llvm-profdata` but not used
+    // in a compiler. InstrProfReader should not maintain this set when used by
+    // a compiler.
     VTableNames.insert(VTableName);
     return Error::success();
   }
@@ -662,6 +679,7 @@ void InstrProfSymtab::finalizeSymtab() {
   if (Sorted)
     return;
   llvm::sort(MD5NameMap, less_first());
+  llvm::sort(MD5VTableMap, less_first());
   llvm::sort(MD5FuncMap, less_first());
   llvm::sort(AddrToMD5Map, less_first());
   AddrToMD5Map.erase(std::unique(AddrToMD5Map.begin(), AddrToMD5Map.end()),

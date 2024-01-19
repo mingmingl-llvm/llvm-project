@@ -380,6 +380,285 @@ CallBase &llvm::versionCallSite(CallBase &CB, Value *Callee,
   return *NewInst;
 }
 
+// Returns true if instruction `I` SHOULD NOT sink to `ElseBlock`.
+// `IntendedInstr` is an instruction that's not in `ElseBlock` yet but would
+// sink there.
+static bool HasUseInNonElseBlock(Instruction &I, BasicBlock *ElseBlock,
+                                 Instruction *IntendedInstr) {
+  // Conservatively returns true so the instruction won't sink into other BBs.
+  // For instance, `llvm.assume` may appear unused.
+  if (I.use_empty())
+    return true;
+
+  for (Use &U : I.uses()) {
+    Instruction *User = dyn_cast<Instruction>(U.getUser());
+
+    // Conservatively returns true if there is a non-instruction user.
+    if (!User)
+      return true;
+
+    // `User` and `I` are in different BB.
+    if (User != IntendedInstr && User->getParent() != ElseBlock)
+      return true;
+  }
+  return false;
+}
+
+// Given the following block,
+// Sink the instructions that are used by function-based comparisons.
+static void SinkVFuncOnlyInstructionsIfSafe(BasicBlock *SrcBlock,
+                                            BasicBlock *DestBlock,
+                                            Instruction *VTableInstr,
+                                            const CallBase &CB) {
+  // Collect all sinkable instructions and move them all together after
+  // instruction iteration completes. Moving instructions in the middle of
+  // iteration might invalidate iterators.
+  std::vector<Instruction *> SinkInsts;
+  // Reversely iterate from the end of a BB, and skip the terminator instruction
+  // at the end of the BB.
+  for (Instruction &Inst :
+       make_range(++SrcBlock->getTerminator()->getReverseIterator(),
+                  SrcBlock->rend())) {
+    if (Inst.isDebugOrPseudoInst())
+      continue;
+
+    // Exit loop if vtable instr is seen.
+    if (&Inst == VTableInstr)
+      break;
+
+    // Don't sink instructions to DestBlock if `Inst` has uses in other blocks.
+    if (HasUseInNonElseBlock(Inst, DestBlock, nullptr))
+      continue;
+
+    LoadInst *LI = dyn_cast<LoadInst>(&Inst);
+    if (LI) {
+      Value *V = cast<Value>(LI);
+      // This load instruction loads the vfunc-ptr for indirect call 'CB',
+      // and it doesn't have other users.
+      if (V == CB.getCalledOperand()) {
+        SinkInsts.push_back(&Inst);
+        Value *Addr = LI->getPointerOperand();
+
+        if (Instruction *AddrInst = dyn_cast<Instruction>(Addr)) {
+          if (!HasUseInNonElseBlock(*AddrInst, DestBlock, &Inst)) {
+            SinkInsts.push_back(AddrInst);
+          }
+        }
+        break;
+      }
+    }
+  }
+  for (Instruction *Inst : SinkInsts) {
+    Inst->moveBefore(&*DestBlock->getFirstInsertionPt());
+  }
+}
+
+// Returns the or result of all icmp instructions.
+Value *getOrResult(std::vector<Value *> &ICmps, IRBuilder<> &Builder) {
+  assert(!ICmps.empty() && "Must have at least one icmp instructions");
+  if (ICmps.size() == 1)
+    return ICmps[0];
+
+  std::vector<Value *> OrResults;
+  int i = 0, NumICmp = ICmps.size();
+  for (i = 0; i + 1 < NumICmp; i += 2) {
+    Value *Or = Builder.CreateOr(ICmps[i], ICmps[i + 1], "icmp-or");
+    OrResults.push_back(Or);
+  }
+  if (i < NumICmp) {
+    OrResults.push_back(ICmps[i]);
+  }
+  return getOrResult(OrResults, Builder);
+}
+
+// From
+// bb:
+//   vptr = load
+//   func-addr = gep vptr
+//   funcptr = load
+//   res = call funcptr
+//
+// To
+// bb:
+//   vptr = load
+//   cond = icmp vptr
+//   br cond if.then, if.else
+//
+// if.then:
+//   res1 = call direct-func
+// if.else:
+//   func-addr = gep vptr
+//   funcptr = load func-addr
+//   res2 = call funcptr
+//
+// bb.merge:
+//   res = phi [res1, if.then] [res2, if.else]
+CallBase &llvm::promoteIndirectCallWithVTableInfo(
+    CallBase &CB, Function *TargetFunction,
+    const SmallVector<VTableCandidate> &VTable2Candidate,
+    const std::vector<int> &VTableIndices,
+    const std::unordered_map<int, Value *> &VTableOffsetToValueMap,
+    uint64_t &SumPromotedVTableCount, MDNode *BranchWeights) {
+  SumPromotedVTableCount = 0;
+  //  It might be a global variable, or alias
+  IRBuilder<> Builder(&CB);
+  CallBase *OrigIndirectCall = &CB;
+
+  // The VTableInstr that's being instrumented. It should remain the same across
+  // all candidates.
+  Instruction *VTableInstr = nullptr;
+
+  std::vector<Value *> ICmps;
+  for (auto Index : VTableIndices) {
+    SumPromotedVTableCount += VTable2Candidate[Index].VTableValCount;
+    const auto &VTableCandidateInfo = VTable2Candidate[Index];
+    if (VTableInstr == nullptr) {
+      VTableInstr = VTableCandidateInfo.VTableInstr;
+    }
+    assert(VTableCandidateInfo.VTableInstr == VTableInstr &&
+           "VTableInstr should remain the same across all candidate");
+
+    Value *VTableVar = Builder.CreatePtrToInt(
+        VTableCandidateInfo.VTableVariable, Builder.getInt64Ty());
+    assert(
+        VTableOffsetToValueMap.find(VTableCandidateInfo.AddressPointOffset) !=
+            VTableOffsetToValueMap.end() &&
+        "Didn't find a value for offset");
+
+    Value *OffsetVar =
+        VTableOffsetToValueMap.at(VTableCandidateInfo.AddressPointOffset);
+    Value *ICmp = Builder.CreateICmpEQ(VTableVar, OffsetVar);
+    ICmps.push_back(ICmp);
+  }
+
+  Value *Cond = getOrResult(ICmps, Builder);
+
+  // FIXME:
+  // This should be optimized to the comparison with a newly-created (alias of?)
+  // vtable variable, and only frequently accessed vtables are created.
+
+  if (CB.isMustTailCall()) {
+    // From:
+    //   bb:
+    //     vptr = load
+    //     func-addr = gep vptr
+    //     funcptr = load
+    //     res = tail call funcptr
+    //     ret res
+    //
+    // To:
+    //   bb:
+    //     vptr = load
+    //     minus = sub vptr, vtable
+    //     cond = icmp minus, constant-offset
+    //     br cond true if.then, false if.else
+    //   if.then:
+    //     %res1 = musttail call direct_callee
+    //     ret %res1
+    //   if.else:
+    //     func-addr = gep vptr
+    //     funcptr = load
+    //     res2 = musttail call funcptr
+    //     ret res2
+    BasicBlock *OrigBlock = CB.getParent();
+    Instruction *ThenTerm =
+        SplitBlockAndInsertIfThen(Cond, &CB, false, BranchWeights);
+    BasicBlock *ThenBlock = ThenTerm->getParent();
+    BasicBlock *ElseBlock = CB.getParent();
+    ThenBlock->setName("if.then.direct_call");
+    CallBase *NewInst = cast<CallBase>(CB.clone());
+    NewInst->insertBefore(ThenTerm);
+    NewInst->setCalledOperand(TargetFunction);
+    // right now it becomes
+    // bb:
+    //   vptr = load
+    //   func-addr = gep vptr <-- 0
+    //   funcptr = load       <-- 1
+    //   minus = sub vptr, vtablevar
+    //   cond = icmp minus, constant-offset
+    //   br cond true, if.true, if.end
+    // if.true:
+    //   res_clone = tail call funcptr
+    //   br if.end
+    // if.end:
+    //   res = tail call funcptr
+    //   ret res
+
+    // Now sink instructions 0 and 1 if possible to `if.end` block.
+    SinkVFuncOnlyInstructionsIfSafe(OrigBlock, ElseBlock, VTableInstr, CB);
+
+    Value *NewRetVal = NewInst;
+    auto Next = CB.getNextNode();
+    if (auto *BitCast = dyn_cast_or_null<BitCastInst>(Next)) {
+      assert(BitCast->getOperand(0) == &CB &&
+             "bitcast following musttail call must use the call");
+      auto NewBitCast = BitCast->clone();
+      NewBitCast->replaceUsesOfWith(&CB, NewInst);
+      NewBitCast->insertBefore(ThenTerm);
+      NewRetVal = NewBitCast;
+      Next = BitCast->getNextNode();
+    }
+
+    // Place a clone of the return instruction after the new call site.
+    ReturnInst *Ret = dyn_cast_or_null<ReturnInst>(Next);
+    assert(Ret && "musttail call must precede a ret with an optional bitcast");
+    auto NewRet = Ret->clone();
+    if (Ret->getReturnValue()) {
+      NewRet->replaceUsesOfWith(Ret->getReturnValue(), NewRetVal);
+    }
+    NewRet->insertBefore(ThenTerm);
+    // A return instruction is terminating, so we don't need the terminating
+    // instruction just created.
+    ThenTerm->eraseFromParent();
+    return *NewInst;
+  } // end if for musttail call.
+
+  // create if-then-else structure. The original instruction is moved into else,
+  // and vfunc-only instructions are sinked into else.
+  // a clone of the original instruction is in the then block.
+  Instruction *ThenTerm = nullptr;
+  Instruction *ElseTerm = nullptr;
+
+  BasicBlock *OrigBlock = CB.getParent();
+  SplitBlockAndInsertIfThenElse(Cond, &CB, &ThenTerm, &ElseTerm, BranchWeights);
+  BasicBlock *ThenBlock = ThenTerm->getParent();
+  BasicBlock *ElseBlock = ElseTerm->getParent();
+  BasicBlock *MergeBlock = OrigIndirectCall->getParent();
+
+  CallBase *NewInst = cast<CallBase>(OrigIndirectCall->clone());
+  OrigIndirectCall->moveBefore(ElseTerm);
+  NewInst->insertBefore(ThenTerm);
+  // Rewrite NewInst to use direct callee to sink the vfunc-only instructions.
+  NewInst->setCalledOperand(TargetFunction);
+  // Now proceed to sink those instructions.
+  SinkVFuncOnlyInstructionsIfSafe(OrigBlock, ElseBlock, VTableInstr, CB);
+
+  if (auto *OrigInvoke = dyn_cast<InvokeInst>(OrigIndirectCall)) {
+    auto *NewInvoke = cast<InvokeInst>(NewInst);
+
+    // Invoke instructions are terminating themselves.
+    ThenTerm->eraseFromParent();
+    ElseTerm->eraseFromParent();
+
+    // Branch from the "merge" block to the original normal destination.
+    Builder.SetInsertPoint(MergeBlock);
+    Builder.CreateBr(OrigInvoke->getNormalDest());
+
+    // Fix-up phi nodes in the original invoke's normal and unwind destinations.
+    fixupPHINodeForNormalDest(OrigInvoke, OrigBlock, MergeBlock);
+    fixupPHINodeForUnwindDest(OrigInvoke, MergeBlock, ThenBlock, ElseBlock);
+
+    // Now set the normal destinations of the invoke instructions to be the
+    // "merge" block.
+    OrigInvoke->setNormalDest(MergeBlock);
+    NewInvoke->setNormalDest(MergeBlock);
+  }
+
+  // create a phi node for the returned value
+  createRetPHINode(OrigIndirectCall, NewInst, MergeBlock, Builder);
+  return *NewInst;
+}
+
 bool llvm::isLegalToPromote(const CallBase &CB, Function *Callee,
                             const char **FailureReason) {
   assert(!CB.getCalledFunction() && "Only indirect call sites can be promoted");
@@ -467,12 +746,16 @@ bool llvm::isLegalToPromote(const CallBase &CB, Function *Callee,
 }
 
 CallBase &llvm::promoteCall(CallBase &CB, Function *Callee,
-                            CastInst **RetBitCast) {
-  assert(!CB.getCalledFunction() && "Only indirect call sites can be promoted");
+                            CastInst **RetBitCast,
+                            bool DirectCalleeAlreadySet) {
+  if (!DirectCalleeAlreadySet) {
+    assert(!CB.getCalledFunction() &&
+           "Only indirect call sites can be promoted");
 
-  // Set the called function of the call site to be the given callee (but don't
-  // change the type).
-  CB.setCalledOperand(Callee);
+    // Set the called function of the call site to be the given callee (but
+    // don't change the type).
+    CB.setCalledOperand(Callee);
+  }
 
   // Since the call site will no longer be direct, we must clear metadata that
   // is only appropriate for indirect calls. This includes !prof and !callees
