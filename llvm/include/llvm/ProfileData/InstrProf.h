@@ -281,6 +281,12 @@ void annotateValueSite(Module &M, Instruction &Inst,
                        ArrayRef<InstrProfValueData> VDs, uint64_t Sum,
                        InstrProfValueKind ValueKind, uint32_t MaxMDCount);
 
+/// Returns true if 'Inst' may have value profiles of kind 'ValueKind', and
+/// false otherwise. A convenient function to help lazily allocate space for
+/// the actual profiled value data array after a preliminary check of metadata.
+MDNode *mayHaveValueProfileOfKind(const Instruction &Inst,
+                                  InstrProfValueKind ValueKind);
+
 /// Extract the value profile data from \p Inst which is annotated with
 /// value profile meta data. Return false if there is no value data annotated,
 /// otherwise return true.
@@ -311,7 +317,21 @@ MDNode *getPGOFuncNameMetadata(const Function &F);
 /// Return the PGOVTableName metadata associated with a global variable.
 MDNode *getPGOVTableNameMetadata(const GlobalVariable &GV);
 
-std::string getPGOName(const GlobalVariable &V, bool InLTO = false);
+/// Returns the PGO object name. This function has some special handling
+/// when called in LTO optimization. The following only applies when calling in
+/// LTO passes (when \c InLTO is true): LTO's internalization privatizes many
+/// global linkage symbols. This happens after value profile annotation, but
+/// those internal linkage functions should not have a source prefix.
+/// Additionally, for ThinLTO mode, exported internal functions are promoted
+/// and renamed. We need to ensure that the original internal PGO name is
+/// used when computing the GUID that is compared against the profiled GUIDs.
+/// To differentiate compiler generated internal symbols from original ones,
+/// PGOFuncName meta data are created and attached to the original internal
+/// symbols in the value profile annotation step
+/// (PGOUseFunc::annotateIndirectCallSites). If a symbol does not have the meta
+/// data, its original linkage must be non-internal.
+std::string getIRPGOObjectName(const GlobalObject &GO, bool InLTO,
+                               MDNode *PGONameMetadata);
 
 /// Create the PGOFuncName meta data if PGOFuncName is different from
 /// function's raw name. This should only apply to internal linkage functions

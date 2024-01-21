@@ -2194,7 +2194,9 @@ PreservedAnalyses PGOInstrumentationUse::run(Module &M,
       // consistent names as annotated (in the form of md5hash(name)) in the
       // value profiles.
       if (!Types.empty())
-        createPGOVTableNameMetadata(G, getPGOName(G, false /* InLTO*/));
+        createPGOVTableNameMetadata(
+            G, getIRPGOObjectName(G, false /* InLTO */,
+                                  nullptr /* PGONameMetadata */));
     }
   }
 

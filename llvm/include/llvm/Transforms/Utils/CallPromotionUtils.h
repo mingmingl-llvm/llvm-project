@@ -23,19 +23,32 @@ class Function;
 class MDNode;
 class Value;
 
-// This is a per callsite information.
-struct VTableCandidate {
-  Instruction *VTableInstr; // the instruction that's instrumented
+// Describes the vtable information for one annotated type value.
+//
+// For example, given:
+//   %vptr = load %obj ...  !prof !0
+//   %func-addr = getelementptr %vptr,
+//   %funcptr = load %func-addr ... !prof !1
+//   call %funcptr
+//
+//   !0 = !{!"VP", i32 2, i64 20, i64 hash1, i64 10, i64 hash2, i64 10
+//   !1 = ...
+// There are two annotated type values in !prof !0.
+struct VTableCandidateInfo {
+  // Points to the vtable variable.
   GlobalVariable *VTableVariable;
-  uint32_t AddressPointOffset; // Address point offset. Used to compute the
-                               // address to compare vtable-ptr against.
+  // The address point offset, used to compute the address to compare vptr with.
+  uint32_t AddressPointOffset;
+  // The function offset in the vtable.
   uint64_t FunctionOffset;
+  // The virtual function.
   Function *TargetFunction;
-  uint64_t VTableValCount; // compute percentage
+  // The profiled count for the vtable.
+  uint64_t VTableValCount;
 
-  VTableCandidate(Instruction *I, GlobalVariable *GV, uint32_t Offset,
-                  uint64_t FunctionOffset, Function *F, uint64_t C)
-      : VTableInstr(I), VTableVariable(GV), AddressPointOffset(Offset),
+  VTableCandidateInfo(GlobalVariable *GV, uint32_t Offset,
+                      uint64_t FunctionOffset, Function *F, uint64_t C)
+      : VTableVariable(GV), AddressPointOffset(Offset),
         FunctionOffset(FunctionOffset), TargetFunction(F), VTableValCount(C) {}
 };
 
@@ -73,8 +86,8 @@ CallBase &promoteCallWithIfThenElse(CallBase &CB, Function *Callee,
 /// Promote the given indirect call to a conditional call using vtable
 /// information.
 CallBase &promoteIndirectCallWithVTableInfo(
-    CallBase &CB, Function *TargetFunction,
-    const SmallVector<VTableCandidate> &VTable2Candidate,
+    CallBase &CB, Function *TargetFunction, Instruction *VPtr,
+    const SmallVector<VTableCandidateInfo> &VTable2Candidate,
     const std::vector<int> &VTableIndices,
     const std::unordered_map<int, Value *> &VTableOffsetToValueMap,
     uint64_t &SumPromotedVTableCount, MDNode *BranchWeights);

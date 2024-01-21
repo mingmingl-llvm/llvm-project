@@ -331,21 +331,8 @@ static std::optional<std::string> lookupPGONameFromMetadata(MDNode *MD) {
   return {};
 }
 
-// Returns the PGO object name. This function has some special handling
-// when called in LTO optimization. The following only applies when calling in
-// LTO passes (when \c InLTO is true): LTO's internalization privatizes many
-// global linkage symbols. This happens after value profile annotation, but
-// those internal linkage functions should not have a source prefix.
-// Additionally, for ThinLTO mode, exported internal functions are promoted
-// and renamed. We need to ensure that the original internal PGO name is
-// used when computing the GUID that is compared against the profiled GUIDs.
-// To differentiate compiler generated internal symbols from original ones,
-// PGOFuncName meta data are created and attached to the original internal
-// symbols in the value profile annotation step
-// (PGOUseFunc::annotateIndirectCallSites). If a symbol does not have the meta
-// data, its original linkage must be non-internal.
-static std::string getIRPGOObjectName(const GlobalObject &GO, bool InLTO,
-                                      MDNode *PGONameMetadata) {
+std::string getIRPGOObjectName(const GlobalObject &GO, bool InLTO,
+                               MDNode *PGONameMetadata) {
   if (!InLTO) {
     auto FileName = getStrippedSourceFileName(GO);
     return getIRPGONameForGlobalObject(GO, GO.getLinkage(), FileName);
@@ -388,13 +375,6 @@ std::string getPGOFuncName(const Function &F, bool InLTO, uint64_t Version) {
   // profile annotation pass. Its current linkage may be internal if it is
   // internalized in LTO mode.
   return getPGOFuncName(F.getName(), GlobalValue::ExternalLinkage, "");
-}
-
-std::string getPGOName(const GlobalVariable &V, bool InLTO) {
-  // PGONameMetadata should be set by compiler at profile use time
-  // and read by symtab creation to look up symbols corresponding to
-  // a MD5 hash.
-  return getIRPGOObjectName(V, InLTO, nullptr /* PGONameMetadata */);
 }
 
 // See getIRPGOFuncName() for a discription of the format.
@@ -615,7 +595,7 @@ Error InstrProfSymtab::addVTableWithName(GlobalVariable &VTable,
   // If a local-linkage vtable is promoted to have external linkage in ThinLTO,
   // it will have `.llvm.` in its name. Use the name before externalization.
   const std::string LLVMSuffix = ".llvm.";
-  int pos = VTablePGOName.find(LLVMSuffix, 0);
+  auto pos = VTablePGOName.find(LLVMSuffix, 0);
   if (pos != std::string::npos && pos != 0) {
     StringRef VTableNameBeforeExt = VTablePGOName.substr(0, pos);
     if (Error E = addVTableName(VTableNameBeforeExt))
@@ -729,7 +709,8 @@ Error collectVTableStrings(ArrayRef<GlobalVariable *> VTables,
                            std::string &Result, bool doCompression) {
   std::vector<std::string> VTableNameStrs;
   for (auto *VTable : VTables) {
-    VTableNameStrs.push_back(getPGOName(*VTable));
+    VTableNameStrs.push_back(getIRPGOObjectName(*VTable, false /* InLTO*/,
+                                                nullptr /* PGONameMetadata */));
   }
   return collectGlobalObjectNameStrings(
       VTableNameStrs, compression::zlib::isAvailable() && doCompression,
@@ -1319,11 +1300,8 @@ void annotateValueSite(Module &M, Instruction &Inst,
   Inst.setMetadata(LLVMContext::MD_prof, MDNode::get(Ctx, Vals));
 }
 
-/// Returns true if 'Inst' may have value profiles of kind 'ValueKind', and
-/// false otherwise. A convenient function to allow lazily allocate space for
-/// the actual profiled value data array after a preliminary check of metadata.
-static MDNode *mayHaveValueProfileOfKind(const Instruction &Inst,
-                                         InstrProfValueKind ValueKind) {
+MDNode *mayHaveValueProfileOfKind(const Instruction &Inst,
+                                  InstrProfValueKind ValueKind) {
   MDNode *MD = Inst.getMetadata(LLVMContext::MD_prof);
   if (!MD)
     return nullptr;
