@@ -7,11 +7,24 @@ target triple = "x86_64-unknown-linux-gnu"
 %class.Error = type { i8 }
 
 @_ZTI5Error = constant { ptr, ptr } { ptr getelementptr inbounds (ptr, ptr null, i64 2), ptr null }
-@_ZTV4Base = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN4Base10get_ticketEv] }, !type !0, !type !1
-@_ZTV7Derived = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN7Derived10get_ticketEv] }, !type !0, !type !1, !type !2, !type !3
+@_ZTV4Base = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN4Base10get_ticketEv] }, !type !15, !type !16
+@_ZTV7Derived = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN7Derived10get_ticketEv] }, !type !15, !type !16, !type !17, !type !18
 
 @.str = private unnamed_addr constant [15 x i8] c"out of tickets\00"
 
+;.
+; ICALL-FUNC: @_ZTI5Error = constant { ptr, ptr } { ptr getelementptr inbounds (ptr, ptr null, i64 2), ptr null }
+; ICALL-FUNC: @_ZTV4Base = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN4Base10get_ticketEv] }, !type [[META0:![0-9]+]], !type [[META1:![0-9]+]]
+; ICALL-FUNC: @_ZTV7Derived = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN7Derived10get_ticketEv] }, !type [[META0]], !type [[META1]], !type [[META2:![0-9]+]], !type [[META3:![0-9]+]]
+; ICALL-FUNC: @.str = private unnamed_addr constant [15 x i8] c"out of tickets\00"
+;.
+; ICALL-VTABLE: @_ZTI5Error = constant { ptr, ptr } { ptr getelementptr inbounds (ptr, ptr null, i64 2), ptr null }
+; ICALL-VTABLE: @_ZTV4Base = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN4Base10get_ticketEv] }, !type [[META0:![0-9]+]], !type [[META1:![0-9]+]]
+; ICALL-VTABLE: @_ZTV7Derived = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN7Derived10get_ticketEv] }, !type [[META0]], !type [[META1]], !type [[META2:![0-9]+]], !type [[META3:![0-9]+]]
+; ICALL-VTABLE: @.str = private unnamed_addr constant [15 x i8] c"out of tickets\00"
+; ICALL-VTABLE: @_ZTV7Derived.icp.16 = constant i64 add (i64 ptrtoint (ptr @_ZTV7Derived to i64), i64 16), comdat
+; ICALL-VTABLE: @_ZTV4Base.icp.16 = constant i64 add (i64 ptrtoint (ptr @_ZTV4Base to i64), i64 16), comdat
+;.
 define i32 @_Z4testP4Base(ptr %b) personality ptr @__gxx_personality_v0 {
 ; ICALL-FUNC-LABEL: define i32 @_Z4testP4Base(
 ; ICALL-FUNC-SAME: ptr [[B:%.*]]) personality ptr @__gxx_personality_v0 {
@@ -22,13 +35,13 @@ define i32 @_Z4testP4Base(ptr %b) personality ptr @__gxx_personality_v0 {
 ; ICALL-FUNC-NEXT:    tail call void @llvm.assume(i1 [[TMP0]])
 ; ICALL-FUNC-NEXT:    [[TMP1:%.*]] = load ptr, ptr [[VTABLE]], align 8
 ; ICALL-FUNC-NEXT:    [[TMP2:%.*]] = icmp eq ptr [[TMP1]], @_ZN7Derived10get_ticketEv
-; ICALL-FUNC-NEXT:    br i1 [[TMP2]], label [[IF_TRUE_DIRECT_TARG:%.*]], label [[IF_FALSE_ORIG_INDIRECT:%.*]], !prof [[PROF4:![0-9]+]]
+; ICALL-FUNC-NEXT:    br i1 [[TMP2]], label [[IF_TRUE_DIRECT_TARG:%.*]], label [[IF_FALSE_ORIG_INDIRECT:%.*]], !prof [[PROF18:![0-9]+]]
 ; ICALL-FUNC:       if.true.direct_targ:
 ; ICALL-FUNC-NEXT:    [[TMP3:%.*]] = invoke i32 @_ZN7Derived10get_ticketEv(ptr [[B]])
 ; ICALL-FUNC-NEXT:            to label [[IF_END_ICP:%.*]] unwind label [[LPAD:%.*]]
 ; ICALL-FUNC:       if.false.orig_indirect:
 ; ICALL-FUNC-NEXT:    [[TMP4:%.*]] = icmp eq ptr [[TMP1]], @_ZN4Base10get_ticketEv
-; ICALL-FUNC-NEXT:    br i1 [[TMP4]], label [[IF_TRUE_DIRECT_TARG1:%.*]], label [[IF_FALSE_ORIG_INDIRECT2:%.*]], !prof [[PROF5:![0-9]+]]
+; ICALL-FUNC-NEXT:    br i1 [[TMP4]], label [[IF_TRUE_DIRECT_TARG1:%.*]], label [[IF_FALSE_ORIG_INDIRECT2:%.*]], !prof [[PROF19:![0-9]+]]
 ; ICALL-FUNC:       if.true.direct_targ1:
 ; ICALL-FUNC-NEXT:    [[TMP5:%.*]] = invoke i32 @_ZN4Base10get_ticketEv(ptr [[B]])
 ; ICALL-FUNC-NEXT:            to label [[IF_END_ICP3:%.*]] unwind label [[LPAD]]
@@ -80,73 +93,71 @@ define i32 @_Z4testP4Base(ptr %b) personality ptr @__gxx_personality_v0 {
 ; ICALL-VTABLE-NEXT:  entry:
 ; ICALL-VTABLE-NEXT:    [[E:%.*]] = alloca [[CLASS_ERROR:%.*]], align 8
 ; ICALL-VTABLE-NEXT:    [[VTABLE:%.*]] = load ptr, ptr [[B]], align 8
-; ICALL-VTABLE-NEXT:    [[TMP0:%.*]] = ptrtoint ptr [[VTABLE]] to i64
-; ICALL-VTABLE-NEXT:    [[OFFSET_VAR:%.*]] = sub nuw i64 [[TMP0]], 16
-; ICALL-VTABLE-NEXT:    [[TMP1:%.*]] = tail call i1 @llvm.type.test(ptr [[VTABLE]], metadata !"_ZTS4Base")
-; ICALL-VTABLE-NEXT:    tail call void @llvm.assume(i1 [[TMP1]])
-; ICALL-VTABLE-NEXT:    [[TMP2:%.*]] = icmp eq i64 ptrtoint (ptr @_ZTV7Derived to i64), [[OFFSET_VAR]]
-; ICALL-VTABLE-NEXT:    br i1 [[TMP2]], label [[IF_THEN_DIRECT_CALL:%.*]], label [[IF_ELSE_ORIG_INDIRECT:%.*]], !prof [[PROF4:![0-9]+]]
+; ICALL-VTABLE-NEXT:    [[TMP0:%.*]] = tail call i1 @llvm.type.test(ptr [[VTABLE]], metadata !"_ZTS4Base")
+; ICALL-VTABLE-NEXT:    tail call void @llvm.assume(i1 [[TMP0]])
+; ICALL-VTABLE-NEXT:    [[TMP1:%.*]] = icmp eq ptr [[VTABLE]], @_ZTV7Derived.icp.16
+; ICALL-VTABLE-NEXT:    br i1 [[TMP1]], label [[IF_THEN_DIRECT_CALL:%.*]], label [[IF_ELSE_ORIG_INDIRECT:%.*]], !prof [[PROF18:![0-9]+]]
 ; ICALL-VTABLE:       if.then.direct_call:
-; ICALL-VTABLE-NEXT:    [[TMP3:%.*]] = invoke i32 @_ZN7Derived10get_ticketEv(ptr [[B]])
+; ICALL-VTABLE-NEXT:    [[TMP2:%.*]] = invoke i32 @_ZN7Derived10get_ticketEv(ptr [[B]])
 ; ICALL-VTABLE-NEXT:            to label [[IF_END_ICP:%.*]] unwind label [[LPAD:%.*]]
 ; ICALL-VTABLE:       if.else.orig_indirect:
-; ICALL-VTABLE-NEXT:    [[TMP4:%.*]] = icmp eq i64 ptrtoint (ptr @_ZTV4Base to i64), [[OFFSET_VAR]]
-; ICALL-VTABLE-NEXT:    br i1 [[TMP4]], label [[IF_THEN_DIRECT_CALL1:%.*]], label [[IF_ELSE_ORIG_INDIRECT2:%.*]], !prof [[PROF5:![0-9]+]]
+; ICALL-VTABLE-NEXT:    [[TMP3:%.*]] = icmp eq ptr [[VTABLE]], @_ZTV4Base.icp.16
+; ICALL-VTABLE-NEXT:    br i1 [[TMP3]], label [[IF_THEN_DIRECT_CALL1:%.*]], label [[IF_ELSE_ORIG_INDIRECT2:%.*]], !prof [[PROF19:![0-9]+]]
 ; ICALL-VTABLE:       if.then.direct_call1:
-; ICALL-VTABLE-NEXT:    [[TMP5:%.*]] = invoke i32 @_ZN4Base10get_ticketEv(ptr [[B]])
+; ICALL-VTABLE-NEXT:    [[TMP4:%.*]] = invoke i32 @_ZN4Base10get_ticketEv(ptr [[B]])
 ; ICALL-VTABLE-NEXT:            to label [[IF_END_ICP3:%.*]] unwind label [[LPAD]]
 ; ICALL-VTABLE:       if.else.orig_indirect2:
-; ICALL-VTABLE-NEXT:    [[TMP6:%.*]] = load ptr, ptr [[VTABLE]], align 8
-; ICALL-VTABLE-NEXT:    [[CALL:%.*]] = invoke i32 [[TMP6]](ptr [[B]])
+; ICALL-VTABLE-NEXT:    [[TMP5:%.*]] = load ptr, ptr [[VTABLE]], align 8
+; ICALL-VTABLE-NEXT:    [[CALL:%.*]] = invoke i32 [[TMP5]](ptr [[B]])
 ; ICALL-VTABLE-NEXT:            to label [[IF_END_ICP3]] unwind label [[LPAD]]
 ; ICALL-VTABLE:       if.end.icp3:
-; ICALL-VTABLE-NEXT:    [[TMP7:%.*]] = phi i32 [ [[CALL]], [[IF_ELSE_ORIG_INDIRECT2]] ], [ [[TMP5]], [[IF_THEN_DIRECT_CALL1]] ]
+; ICALL-VTABLE-NEXT:    [[TMP6:%.*]] = phi i32 [ [[CALL]], [[IF_ELSE_ORIG_INDIRECT2]] ], [ [[TMP4]], [[IF_THEN_DIRECT_CALL1]] ]
 ; ICALL-VTABLE-NEXT:    br label [[IF_END_ICP]]
 ; ICALL-VTABLE:       if.end.icp:
-; ICALL-VTABLE-NEXT:    [[TMP8:%.*]] = phi i32 [ [[TMP7]], [[IF_END_ICP3]] ], [ [[TMP3]], [[IF_THEN_DIRECT_CALL]] ]
+; ICALL-VTABLE-NEXT:    [[TMP7:%.*]] = phi i32 [ [[TMP6]], [[IF_END_ICP3]] ], [ [[TMP2]], [[IF_THEN_DIRECT_CALL]] ]
 ; ICALL-VTABLE-NEXT:    br label [[TRY_CONT:%.*]]
 ; ICALL-VTABLE:       lpad:
-; ICALL-VTABLE-NEXT:    [[TMP9:%.*]] = landingpad { ptr, i32 }
+; ICALL-VTABLE-NEXT:    [[TMP8:%.*]] = landingpad { ptr, i32 }
 ; ICALL-VTABLE-NEXT:            cleanup
 ; ICALL-VTABLE-NEXT:            catch ptr @_ZTI5Error
-; ICALL-VTABLE-NEXT:    [[TMP10:%.*]] = extractvalue { ptr, i32 } [[TMP9]], 1
-; ICALL-VTABLE-NEXT:    [[TMP11:%.*]] = tail call i32 @llvm.eh.typeid.for(ptr nonnull @_ZTI5Error)
-; ICALL-VTABLE-NEXT:    [[MATCHES:%.*]] = icmp eq i32 [[TMP10]], [[TMP11]]
+; ICALL-VTABLE-NEXT:    [[TMP9:%.*]] = extractvalue { ptr, i32 } [[TMP8]], 1
+; ICALL-VTABLE-NEXT:    [[TMP10:%.*]] = tail call i32 @llvm.eh.typeid.for(ptr nonnull @_ZTI5Error)
+; ICALL-VTABLE-NEXT:    [[MATCHES:%.*]] = icmp eq i32 [[TMP9]], [[TMP10]]
 ; ICALL-VTABLE-NEXT:    br i1 [[MATCHES]], label [[CATCH:%.*]], label [[EHCLEANUP:%.*]]
 ; ICALL-VTABLE:       catch:
-; ICALL-VTABLE-NEXT:    [[TMP12:%.*]] = extractvalue { ptr, i32 } [[TMP9]], 0
+; ICALL-VTABLE-NEXT:    [[TMP11:%.*]] = extractvalue { ptr, i32 } [[TMP8]], 0
 ; ICALL-VTABLE-NEXT:    [[CALL3:%.*]] = invoke i32 @_ZN5Error10error_codeEv(ptr nonnull align 1 dereferenceable(1) [[E]])
 ; ICALL-VTABLE-NEXT:            to label [[INVOKE_CONT2:%.*]] unwind label [[LPAD1:%.*]]
 ; ICALL-VTABLE:       invoke.cont2:
 ; ICALL-VTABLE-NEXT:    call void @__cxa_end_catch()
 ; ICALL-VTABLE-NEXT:    br label [[TRY_CONT]]
 ; ICALL-VTABLE:       try.cont:
-; ICALL-VTABLE-NEXT:    [[RET_0:%.*]] = phi i32 [ [[CALL3]], [[INVOKE_CONT2]] ], [ [[TMP8]], [[IF_END_ICP]] ]
+; ICALL-VTABLE-NEXT:    [[RET_0:%.*]] = phi i32 [ [[CALL3]], [[INVOKE_CONT2]] ], [ [[TMP7]], [[IF_END_ICP]] ]
 ; ICALL-VTABLE-NEXT:    ret i32 [[RET_0]]
 ; ICALL-VTABLE:       lpad1:
-; ICALL-VTABLE-NEXT:    [[TMP13:%.*]] = landingpad { ptr, i32 }
+; ICALL-VTABLE-NEXT:    [[TMP12:%.*]] = landingpad { ptr, i32 }
 ; ICALL-VTABLE-NEXT:            cleanup
 ; ICALL-VTABLE-NEXT:    invoke void @__cxa_end_catch()
 ; ICALL-VTABLE-NEXT:            to label [[INVOKE_CONT4:%.*]] unwind label [[TERMINATE_LPAD:%.*]]
 ; ICALL-VTABLE:       invoke.cont4:
 ; ICALL-VTABLE-NEXT:    br label [[EHCLEANUP]]
 ; ICALL-VTABLE:       ehcleanup:
-; ICALL-VTABLE-NEXT:    [[LPAD_VAL7_MERGED:%.*]] = phi { ptr, i32 } [ [[TMP13]], [[INVOKE_CONT4]] ], [ [[TMP9]], [[LPAD]] ]
+; ICALL-VTABLE-NEXT:    [[LPAD_VAL7_MERGED:%.*]] = phi { ptr, i32 } [ [[TMP12]], [[INVOKE_CONT4]] ], [ [[TMP8]], [[LPAD]] ]
 ; ICALL-VTABLE-NEXT:    resume { ptr, i32 } [[LPAD_VAL7_MERGED]]
 ; ICALL-VTABLE:       terminate.lpad:
-; ICALL-VTABLE-NEXT:    [[TMP14:%.*]] = landingpad { ptr, i32 }
+; ICALL-VTABLE-NEXT:    [[TMP13:%.*]] = landingpad { ptr, i32 }
 ; ICALL-VTABLE-NEXT:            catch ptr null
-; ICALL-VTABLE-NEXT:    [[TMP15:%.*]] = extractvalue { ptr, i32 } [[TMP14]], 0
+; ICALL-VTABLE-NEXT:    [[TMP14:%.*]] = extractvalue { ptr, i32 } [[TMP13]], 0
 ; ICALL-VTABLE-NEXT:    unreachable
 ;
 entry:
   %e = alloca %class.Error
-  %vtable = load ptr, ptr %b, !prof !4
+  %vtable = load ptr, ptr %b, !prof !19
   %0 = tail call i1 @llvm.type.test(ptr %vtable, metadata !"_ZTS4Base")
   tail call void @llvm.assume(i1 %0)
   %1 = load ptr, ptr %vtable
   %call = invoke i32 %1(ptr %b)
-  to label %try.cont unwind label %lpad, !prof !5
+  to label %try.cont unwind label %lpad, !prof !20
 
 lpad:
   %2 = landingpad { ptr, i32 }
@@ -250,9 +261,77 @@ declare i32 @_Z13get_ticket_idv()
 declare ptr @__cxa_allocate_exception(i64)
 declare void @_ZN5ErrorC1EPKci(ptr nonnull align 1 dereferenceable(1), ptr, i32)
 
-!0 = !{i64 16, !"_ZTS4Base"}
-!1 = !{i64 16, !"_ZTSM4BaseFivE.virtual"}
-!2 = !{i64 16, !"_ZTS7Derived"}
-!3 = !{i64 16, !"_ZTSM7DerivedFivE.virtual"}
-!4 = !{!"VP", i32 2, i64 1600, i64 13870436605473471591, i64 900, i64 1960855528937986108, i64 700}
-!5 = !{!"VP", i32 0, i64 1600, i64 14811317294552474744, i64 900, i64 9261744921105590125, i64 700}
+
+!llvm.module.flags = !{!1}
+
+!1 = !{i32 1, !"ProfileSummary", !2}
+!2 = !{!3, !4, !5, !6, !7, !8, !9, !10}
+!3 = !{!"ProfileFormat", !"InstrProf"}
+!4 = !{!"TotalCount", i64 10000}
+!5 = !{!"MaxCount", i64 200}
+!6 = !{!"MaxInternalCount", i64 200}
+!7 = !{!"MaxFunctionCount", i64 200}
+!8 = !{!"NumCounts", i64 3}
+!9 = !{!"NumFunctions", i64 3}
+!10 = !{!"DetailedSummary", !11}
+!11 = !{!12, !13, !14}
+!12 = !{i32 10000, i64 100, i32 1}
+!13 = !{i32 990000, i64 100, i32 1}
+!14 = !{i32 999999, i64 1, i32 2}
+!15 = !{i64 16, !"_ZTS4Base"}
+!16 = !{i64 16, !"_ZTSM4BaseFivE.virtual"}
+!17 = !{i64 16, !"_ZTS7Derived"}
+!18 = !{i64 16, !"_ZTSM7DerivedFivE.virtual"}
+!19 = !{!"VP", i32 2, i64 1600, i64 13870436605473471591, i64 900, i64 1960855528937986108, i64 700}
+!20 = !{!"VP", i32 0, i64 1600, i64 14811317294552474744, i64 900, i64 9261744921105590125, i64 700}
+;.
+; ICALL-FUNC: attributes #[[ATTR0:[0-9]+]] = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+; ICALL-FUNC: attributes #[[ATTR1:[0-9]+]] = { nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write) }
+; ICALL-FUNC: attributes #[[ATTR2:[0-9]+]] = { nounwind memory(none) }
+;.
+; ICALL-VTABLE: attributes #[[ATTR0:[0-9]+]] = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+; ICALL-VTABLE: attributes #[[ATTR1:[0-9]+]] = { nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write) }
+; ICALL-VTABLE: attributes #[[ATTR2:[0-9]+]] = { nounwind memory(none) }
+;.
+; ICALL-FUNC: [[META0]] = !{i64 16, !"_ZTS4Base"}
+; ICALL-FUNC: [[META1]] = !{i64 16, !"_ZTSM4BaseFivE.virtual"}
+; ICALL-FUNC: [[META2]] = !{i64 16, !"_ZTS7Derived"}
+; ICALL-FUNC: [[META3]] = !{i64 16, !"_ZTSM7DerivedFivE.virtual"}
+; ICALL-FUNC: [[META4:![0-9]+]] = !{i32 1, !"ProfileSummary", [[META5:![0-9]+]]}
+; ICALL-FUNC: [[META5]] = !{[[META6:![0-9]+]], [[META7:![0-9]+]], [[META8:![0-9]+]], [[META9:![0-9]+]], [[META10:![0-9]+]], [[META11:![0-9]+]], [[META12:![0-9]+]], [[META13:![0-9]+]]}
+; ICALL-FUNC: [[META6]] = !{!"ProfileFormat", !"InstrProf"}
+; ICALL-FUNC: [[META7]] = !{!"TotalCount", i64 10000}
+; ICALL-FUNC: [[META8]] = !{!"MaxCount", i64 200}
+; ICALL-FUNC: [[META9]] = !{!"MaxInternalCount", i64 200}
+; ICALL-FUNC: [[META10]] = !{!"MaxFunctionCount", i64 200}
+; ICALL-FUNC: [[META11]] = !{!"NumCounts", i64 3}
+; ICALL-FUNC: [[META12]] = !{!"NumFunctions", i64 3}
+; ICALL-FUNC: [[META13]] = !{!"DetailedSummary", [[META14:![0-9]+]]}
+; ICALL-FUNC: [[META14]] = !{[[META15:![0-9]+]], [[META16:![0-9]+]], [[META17:![0-9]+]]}
+; ICALL-FUNC: [[META15]] = !{i32 10000, i64 100, i32 1}
+; ICALL-FUNC: [[META16]] = !{i32 990000, i64 100, i32 1}
+; ICALL-FUNC: [[META17]] = !{i32 999999, i64 1, i32 2}
+; ICALL-FUNC: [[PROF18]] = !{!"branch_weights", i32 900, i32 700}
+; ICALL-FUNC: [[PROF19]] = !{!"branch_weights", i32 700, i32 0}
+;.
+; ICALL-VTABLE: [[META0]] = !{i64 16, !"_ZTS4Base"}
+; ICALL-VTABLE: [[META1]] = !{i64 16, !"_ZTSM4BaseFivE.virtual"}
+; ICALL-VTABLE: [[META2]] = !{i64 16, !"_ZTS7Derived"}
+; ICALL-VTABLE: [[META3]] = !{i64 16, !"_ZTSM7DerivedFivE.virtual"}
+; ICALL-VTABLE: [[META4:![0-9]+]] = !{i32 1, !"ProfileSummary", [[META5:![0-9]+]]}
+; ICALL-VTABLE: [[META5]] = !{[[META6:![0-9]+]], [[META7:![0-9]+]], [[META8:![0-9]+]], [[META9:![0-9]+]], [[META10:![0-9]+]], [[META11:![0-9]+]], [[META12:![0-9]+]], [[META13:![0-9]+]]}
+; ICALL-VTABLE: [[META6]] = !{!"ProfileFormat", !"InstrProf"}
+; ICALL-VTABLE: [[META7]] = !{!"TotalCount", i64 10000}
+; ICALL-VTABLE: [[META8]] = !{!"MaxCount", i64 200}
+; ICALL-VTABLE: [[META9]] = !{!"MaxInternalCount", i64 200}
+; ICALL-VTABLE: [[META10]] = !{!"MaxFunctionCount", i64 200}
+; ICALL-VTABLE: [[META11]] = !{!"NumCounts", i64 3}
+; ICALL-VTABLE: [[META12]] = !{!"NumFunctions", i64 3}
+; ICALL-VTABLE: [[META13]] = !{!"DetailedSummary", [[META14:![0-9]+]]}
+; ICALL-VTABLE: [[META14]] = !{[[META15:![0-9]+]], [[META16:![0-9]+]], [[META17:![0-9]+]]}
+; ICALL-VTABLE: [[META15]] = !{i32 10000, i64 100, i32 1}
+; ICALL-VTABLE: [[META16]] = !{i32 990000, i64 100, i32 1}
+; ICALL-VTABLE: [[META17]] = !{i32 999999, i64 1, i32 2}
+; ICALL-VTABLE: [[PROF18]] = !{!"branch_weights", i32 900, i32 700}
+; ICALL-VTABLE: [[PROF19]] = !{!"branch_weights", i32 700, i32 0}
+;.

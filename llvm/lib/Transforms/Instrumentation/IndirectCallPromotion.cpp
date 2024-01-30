@@ -43,6 +43,7 @@
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/Instrumentation/PGOInstrumentation.h"
 #include "llvm/Transforms/Utils/CallPromotionUtils.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <cassert>
 #include <cstdint>
 #include <memory>
@@ -129,9 +130,10 @@ static cl::opt<bool>
                  cl::desc("Dump IR after transformation happens"));
 
 namespace {
-
-// Promote indirect calls to conditional direct calls, keeping track of
-// thresholds.
+using VTableOffsetVarMap = llvm::VTableOffsetVarMap;
+// DenseMap<const GlobalVariable *, DenseMap<int, GlobalVariable *>>;
+//  Promote indirect calls to conditional direct calls, keeping track of
+//  thresholds.
 class IndirectCallPromoter {
 public:
   struct VirtualCallInfo {
@@ -144,12 +146,20 @@ public:
 
 private:
   Function &F;
+  Module &M;
+  const Triple TT;
 
   // Symtab that maps indirect call profile values to function names and
   // defines.
   InstrProfSymtab *const Symtab;
 
   DenseMap<const CallBase *, VirtualCallInfo> &VirtualCallToTypeInfo;
+
+  // This map records per-module state; IndirectCallPromoter processes one
+  // function at a time and updates this map with new entries the first time
+  // the entry is needed in the module; the subsequent functions could re-use
+  // map entries inserted when processing prior functions.
+  VTableOffsetVarMap &VTableDefToAddressPointOffsetVarMap;
 
   const bool SamplePGO;
 
@@ -169,10 +179,12 @@ private:
       Instruction *VPtr,
       const SmallVector<VTableCandidateInfo> &VTable2CandidateInfo,
       const std::vector<int> &VTableIndices,
-      const std::unordered_map<int /* offset*/, Value *>
-          &VTableOffsetToValueMap,
+      const VTableOffsetVarMap &VTableDefToAddressPointOffsetVarMap,
       SmallPtrSet<Function *, 2> &VTablePromotedSet,
       OptimizationRemarkEmitter *ORE);
+
+  void createVTableAddressPointOffsetVar(GlobalVariable *VTable,
+                                         uint32_t AddressPointOffset);
 
   enum class CompareOption {
     // compare functions
@@ -191,6 +203,7 @@ private:
     // function candidate. Specifically, if an address point is seen by prior
     // function candidate of the same indirect callsite, later function
     // candidates won't record the offset.
+    // FIXME: Change this to vtable variables to be compared with.
     SetVector<int> Offsets;
   };
 
@@ -198,7 +211,7 @@ private:
   // option. If vtable comparison is chosen, `PerFuncVCInfo` is initialized
   // to do vtable-based transformations.
   CompareOption
-  analyzeProfiles(CallBase &CB,
+  analyzeProfiles(const ProfileSummaryInfo *PSI, CallBase &CB,
                   const std::vector<PromotionCandidate> &FunctionCandidates,
                   const SmallVector<VTableCandidateInfo> &VCInfo,
                   std::vector<PerFuncVTableInfo> &PerFuncVCInfo);
@@ -214,7 +227,7 @@ private:
 
   // Promote a list of targets for one indirect-call callsite. Return
   // the number of promotions.
-  uint32_t tryToPromote(CallBase &CB,
+  uint32_t tryToPromote(const ProfileSummaryInfo *PSI, CallBase &CB,
                         const std::vector<PromotionCandidate> &Candidates,
                         uint64_t &TotalCount);
 
@@ -229,12 +242,21 @@ private:
       const CallBase &CB,
       SmallVector<VTableCandidateInfo> &VTable2CandidateInfo);
 
+  void maybeSetComdatForVTableOffsetedVar(GlobalVariable *OffsetVar,
+                                          const GlobalVariable &VTableVar,
+                                          Module &M);
+
 public:
   IndirectCallPromoter(
       Function &Func, InstrProfSymtab *Symtab, bool SamplePGO,
       DenseMap<const CallBase *, VirtualCallInfo> &VirtualCallToTypeInfo,
+      DenseMap<const GlobalVariable *, DenseMap<int, GlobalVariable *>>
+          &VTableDefToAddressPointOffsetVarMap,
       OptimizationRemarkEmitter &ORE)
-      : F(Func), Symtab(Symtab), VirtualCallToTypeInfo(VirtualCallToTypeInfo),
+      : F(Func), M(*Func.getParent()), TT(Triple(M.getTargetTriple())),
+        Symtab(Symtab), VirtualCallToTypeInfo(VirtualCallToTypeInfo),
+        VTableDefToAddressPointOffsetVarMap(
+            VTableDefToAddressPointOffsetVarMap),
         SamplePGO(SamplePGO), ORE(ORE) {}
   IndirectCallPromoter(const IndirectCallPromoter &) = delete;
   IndirectCallPromoter &operator=(const IndirectCallPromoter &) = delete;
@@ -368,8 +390,7 @@ CallBase &IndirectCallPromoter::promoteIndirectCallBasedOnVTable(
     Instruction *VPtr,
     const SmallVector<VTableCandidateInfo> &VTable2CandidateInfo,
     const std::vector<int> &VTableIndices,
-    const std::unordered_map<int /*address-point-offset*/, Value *>
-        &VTableOffsetToValueMap,
+    const VTableOffsetVarMap &VTableOffsetToValueMap,
     SmallPtrSet<Function *, 2> &VTablePromotedSet,
     OptimizationRemarkEmitter *ORE) {
   uint64_t IfCount = 0;
@@ -424,7 +445,8 @@ int getNumAdditionalInsts(int NumVTableCandidate, bool FunctionHasOffset,
 // Analyze function profiles and vtable profiles and returns whether to compare
 // functions or vtables for indirect call promotion.
 IndirectCallPromoter::CompareOption IndirectCallPromoter::analyzeProfiles(
-    CallBase &CB, const std::vector<PromotionCandidate> &Candidates,
+    const ProfileSummaryInfo *PSI, CallBase &CB,
+    const std::vector<PromotionCandidate> &Candidates,
     const SmallVector<VTableCandidateInfo> &VTable2CandidateInfo,
     std::vector<PerFuncVTableInfo> &PerFuncVCInfo) {
   // Return early if vtable comparison is not enabled or if there are no
@@ -492,9 +514,100 @@ IndirectCallPromoter::CompareOption IndirectCallPromoter::analyzeProfiles(
     }
   }
 
-  return VTableCmpSumInst > VTableCmpTotalInstThreshold
-             ? CompareOption::kFunction
-             : CompareOption::kVTable;
+  const auto CmpOption = VTableCmpSumInst > VTableCmpTotalInstThreshold
+                             ? CompareOption::kFunction
+                             : CompareOption::kVTable;
+
+  if (CmpOption != CompareOption::kVTable)
+    return CmpOption;
+
+  // Create one GlobalVariable for each non-cold vtable variable for
+  // comparison.
+  for (int i = 0; i < (int)PerFuncVCInfo.size(); i++) {
+    for (int j = 0; j < (int)PerFuncVCInfo[i].Indices.size(); j++) {
+      int VCIndex = PerFuncVCInfo[i].Indices[j];
+      // cache in a map, keyed by global-var
+      if (PSI &&
+          !PSI->isColdCount(VTable2CandidateInfo[VCIndex].VTableValCount)) {
+        createVTableAddressPointOffsetVar(
+            VTable2CandidateInfo[VCIndex].VTableVariable,
+            VTable2CandidateInfo[VCIndex].AddressPointOffset);
+      }
+    }
+  }
+
+  return CmpOption;
+}
+
+void IndirectCallPromoter::maybeSetComdatForVTableOffsetedVar(
+    GlobalVariable *OffsetVar, const GlobalVariable &VTableVar, Module &M) {
+  const bool NeedComdat = needsComdatForCounter(VTableVar, M);
+  const bool UseComdat = (NeedComdat || TT.isOSBinFormatELF());
+
+  if (!UseComdat)
+    return;
+
+  // How could you make vtable-offset-var in the same comdat as vtable?
+  // If vtable has a comdat, add to it.
+  // Otherwise, could you change the comdat of vtable? -> it changes semantics
+  // when duplicated vtables are found, so probably doesn't do that.
+  // Just put all offseted var into one comdat is ok -> and do not add it into
+  // llvm.used -> code should reference the data and make it alive.
+  StringRef ComdatGroupName = OffsetVar->getName();
+  Comdat *C = M.getOrInsertComdat(ComdatGroupName);
+  if (!NeedComdat)
+    C->setSelectionKind(Comdat::NoDeduplicate);
+
+  OffsetVar->setComdat(C);
+}
+
+void IndirectCallPromoter::createVTableAddressPointOffsetVar(
+    GlobalVariable *VTable, uint32_t AddressPointOffset) {
+
+  // If a variable for address-point-offset is already created, return.
+  if (VTableDefToAddressPointOffsetVarMap[VTable][AddressPointOffset] !=
+      nullptr)
+    return;
+
+  IRBuilder<> Builder(F.getContext());
+
+  // Type is the type to be compared with.
+  Constant *VTableVar = ConstantExpr::getPtrToInt(VTable, Builder.getInt64Ty());
+
+  // Linkage is about symbol resolution, and comdat is about whether/how
+  // sections are discarded as a unit.
+  std::string Name =
+      VTable->getName().str() + ".icp." + std::to_string(AddressPointOffset);
+  GlobalValue::LinkageTypes Linkage = VTable->getLinkage();
+
+  // Match the vtable's linkage in general, but revise two linkage types with
+  // 'reference' semantics, see createPGOFuncNameVar for details
+  if (Linkage == GlobalValue::ExternalWeakLinkage)
+    Linkage = GlobalValue::LinkOnceAnyLinkage;
+  else if (Linkage == GlobalValue::AvailableExternallyLinkage)
+    Linkage = GlobalValue::LinkOnceODRLinkage;
+
+  GlobalVariable *AddressPointOffsetVar = new GlobalVariable(
+      M, Builder.getInt64Ty(), /* constant= */ true, Linkage,
+      ConstantExpr::getAdd(VTableVar, ConstantInt::get(Builder.getInt64Ty(),
+                                                       AddressPointOffset,
+                                                       /* isSigned= */ false)),
+      Name);
+
+  // Put the global variables corresponding to a <vtable-var, offset>
+  // into one comdat group.
+  maybeSetComdatForVTableOffsetedVar(AddressPointOffsetVar, *VTable, M);
+
+  VTableDefToAddressPointOffsetVarMap[VTable][AddressPointOffset] =
+      AddressPointOffsetVar;
+
+  // Specifically, the vtable-based comparisons should reference the global
+  // variables. The lifetime of offseted variable and the vtable it references
+  // are maintained in the following way:
+  // 1. If the vtable is not used and thereby GC'ed by linker, its offseted
+  // variable shouldn't be referenced in the first place.
+  // 2. If the offseted variable is not referenced, linker is allowed to GC it.
+  // The linker GC reduces one refence to the vtable.
 }
 
 // Indirect-call promotion heuristic. The direct targets are sorted based on
@@ -638,8 +751,8 @@ uint32_t IndirectCallPromoter::tryToPromoteAndCompareFunctions(
 
 // Promote indirect-call to conditional direct-call for one callsite.
 uint32_t IndirectCallPromoter::tryToPromote(
-    CallBase &CB, const std::vector<PromotionCandidate> &Candidates,
-    uint64_t &TotalCount) {
+    const ProfileSummaryInfo *PSI, CallBase &CB,
+    const std::vector<PromotionCandidate> &Candidates, uint64_t &TotalCount) {
   if (!EnableVTableCmp)
     return tryToPromoteAndCompareFunctions(CB, Candidates, TotalCount);
 
@@ -647,9 +760,10 @@ uint32_t IndirectCallPromoter::tryToPromote(
   uint64_t TotalVTableCount =
       computeVTableCandidateInfo(CB, VTable2CandidateInfo);
 
+  // FIXME: Update cost model after creating global variables.
   std::vector<PerFuncVTableInfo> PerFuncVCInfo;
   auto CompareSolution =
-      analyzeProfiles(CB, Candidates, VTable2CandidateInfo, PerFuncVCInfo);
+      analyzeProfiles(PSI, CB, Candidates, VTable2CandidateInfo, PerFuncVCInfo);
 
   if (CompareSolution == IndirectCallPromoter::CompareOption::kFunction)
     return tryToPromoteAndCompareFunctions(CB, Candidates, TotalCount);
@@ -663,61 +777,38 @@ uint32_t IndirectCallPromoter::tryToPromote(
   auto TypeInfo = VirtualCallToTypeInfo.at(CBPtr);
   IRBuilder<> Builder(TypeInfo.TypeTestInstr);
 
-  Value *CastedVTableVar = Builder.CreatePtrToInt(VPtr, Builder.getInt64Ty());
-
-  auto FirstOffset = PerFuncVCInfo[0].Offsets.front();
-  Value *Sub = Builder.CreateNUWSub(
-      CastedVTableVar, Builder.getInt64(static_cast<uint64_t>(FirstOffset)),
-      "offset_var", false /* FoldConstant */);
-
-  std::unordered_map<int, Value *> VTableOffsetToValueMap;
-  VTableOffsetToValueMap[FirstOffset] = Sub;
+  // std::unordered_map<const GlobalVariable *,
+  //                    std::unordered_map<int, GlobalVariable *>>
+  //     VTableOffsetToValueMap;
 
   SmallPtrSet<Function *, 2> VTablePromotedSet;
 
-  // for each offset, create an offset var
-  // FIXME:
-  // As opposed to creating offset var (to represent an address in the middle of
-  // vtable array) for comparison, create alias of the address to be compared
-  // directly. The aliases are only created for frequently accessed vtables.
-  auto iter = PerFuncVCInfo[0].Offsets.begin();
-  iter++; // skip the first offset
+  for (size_t i = 0; i < Candidates.size(); i++) {
+    // const auto &VTableIndices = PerFuncVCInfo[i].Indices;
 
-  IRBuilder<> CBBlockBuilder(&CB);
-  while (iter != PerFuncVCInfo[0].Offsets.end()) {
-    Value *OffsetVar = CBBlockBuilder.CreateNUWSub(
-        CastedVTableVar, Builder.getInt64(static_cast<uint64_t>(*iter)),
-        "offset_var", false /* FoldConstant*/);
-    VTableOffsetToValueMap[*iter] = OffsetVar;
-    iter++;
-  }
-  promoteIndirectCallBasedOnVTable(
-      CB, TotalVTableCount, Candidates[0].TargetFunction, VPtr,
-      VTable2CandidateInfo, PerFuncVCInfo[0].Indices, VTableOffsetToValueMap,
-      VTablePromotedSet, &ORE);
-
-  for (size_t i = 1; i < Candidates.size(); i++) {
-    auto &Offset = PerFuncVCInfo[i].Offsets;
-    IRBuilder<> CBBlockBuilder(&CB);
-    iter = Offset.begin();
-    while (iter != Offset.end()) {
-      // Variable already created
-      if (VTableOffsetToValueMap.find(*iter) != VTableOffsetToValueMap.end()) {
-        iter++;
+    /* for (const auto VTableIndex : VTableIndices) {
+      // look up the pre-created vtable vars
+      if (!PSI ||
+          PSI->isColdCount(VTable2CandidateInfo[VTableIndex].VTableValCount))
         continue;
-      }
 
-      Value *OffsetVar = CBBlockBuilder.CreateNUWSub(
-          CastedVTableVar, Builder.getInt64(static_cast<uint64_t>(*iter)),
-          "offset_var", false /* FoldConstant*/);
-      VTableOffsetToValueMap[*iter] = OffsetVar;
-      iter++;
-    }
+      const GlobalVariable *VTable =
+          VTable2CandidateInfo[VTableIndex].VTableVariable;
+      uint32_t AddressPointOffset =
+          VTable2CandidateInfo[VTableIndex].AddressPointOffset;
+
+      GlobalVariable *OffsetedVar =
+          VTableDefToAddressPointOffsetVarMap[VTable][AddressPointOffset];
+      if (OffsetedVar == nullptr)
+        continue;
+
+      VTableOffsetToValueMap[VTable][AddressPointOffset] = OffsetedVar;
+    } */
 
     promoteIndirectCallBasedOnVTable(
         CB, TotalVTableCount, Candidates[i].TargetFunction, VPtr,
-        VTable2CandidateInfo, PerFuncVCInfo[i].Indices, VTableOffsetToValueMap,
-        VTablePromotedSet, &ORE);
+        VTable2CandidateInfo, PerFuncVCInfo[i].Indices,
+        VTableDefToAddressPointOffsetVarMap, VTablePromotedSet, &ORE);
   }
 
   return VTablePromotedSet.size();
@@ -743,7 +834,8 @@ bool IndirectCallPromoter::processFunction(ProfileSummaryInfo *PSI) {
 
     // get the vtable set for each target value.
     // for target values with only one vtable, compare vtable.
-    uint32_t NumPromoted = tryToPromote(*CB, PromotionCandidates, TotalCount);
+    uint32_t NumPromoted =
+        tryToPromote(PSI, *CB, PromotionCandidates, TotalCount);
     if (NumPromoted == 0)
       continue;
 
@@ -850,6 +942,9 @@ static bool promoteIndirectCalls(Module &M, ProfileSummaryInfo *PSI, bool InLTO,
 
   computeVirtualCallToTypeInfo(M, MAM, VirtualCallToTypeInfo);
 
+  DenseMap<const GlobalVariable *, DenseMap<int, GlobalVariable *>>
+      VTableDefToAddressPointOffsetVarMap;
+
   bool Changed = false;
   for (auto &F : M) {
     if (F.isDeclaration() || F.hasOptNone())
@@ -860,7 +955,8 @@ static bool promoteIndirectCalls(Module &M, ProfileSummaryInfo *PSI, bool InLTO,
     auto &ORE = FAM.getResult<OptimizationRemarkEmitterAnalysis>(F);
 
     IndirectCallPromoter CallPromoter(F, &Symtab, SamplePGO,
-                                      VirtualCallToTypeInfo, ORE);
+                                      VirtualCallToTypeInfo,
+                                      VTableDefToAddressPointOffsetVarMap, ORE);
     bool FuncChanged = CallPromoter.processFunction(PSI);
     if (ICPDUMPAFTER && FuncChanged) {
       LLVM_DEBUG(dbgs() << "\n== IR Dump After =="; F.print(dbgs()));
