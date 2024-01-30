@@ -621,8 +621,8 @@ CallBase &llvm::promoteIndirectCallWithVTableInfo(
     const auto &VTableInfo = VTable2Candidate[Index];
 
     auto VTableMapIter = VTableOffsetToValueMap.find(VTableInfo.VTableVariable);
-    assert(VTableMapIter != VTableOffsetToValueMap.end() &&
-           "Expect an entry for each vtable candidate");
+    if (VTableMapIter == VTableOffsetToValueMap.end())
+      continue;
 
     const auto &SubMap = VTableMapIter->second;
     auto OffsetVarIter = SubMap.find(VTableInfo.AddressPointOffset);

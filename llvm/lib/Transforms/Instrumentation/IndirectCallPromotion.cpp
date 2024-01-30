@@ -438,8 +438,8 @@ int getNumAdditionalInsts(int NumVTableCandidate, bool FunctionHasOffset,
   // If function offset is not zero, GEP is used to calculated function address.
   int NumFunctionGEPInst = FunctionHasOffset ? 1 : 0;
 
-  return NumVTableCmpInsts + NumVTableOrInsts + NumVTableOffset -
-         NumFunctionGEPInst - 1 /* NumFunctionICmp */;
+  return NumVTableCmpInsts + NumVTableOrInsts - NumFunctionGEPInst -
+         1 /* NumFunctionICmp */;
 }
 
 // Analyze function profiles and vtable profiles and returns whether to compare
@@ -523,16 +523,14 @@ IndirectCallPromoter::CompareOption IndirectCallPromoter::analyzeProfiles(
 
   // Create one GlobalVariable for each non-cold vtable variable for
   // comparison.
+  // FIXME: Consider fall back to function-based comparison if function itself
+  // is hot but the vtable distribution is cold.
   for (int i = 0; i < (int)PerFuncVCInfo.size(); i++) {
     for (int j = 0; j < (int)PerFuncVCInfo[i].Indices.size(); j++) {
       int VCIndex = PerFuncVCInfo[i].Indices[j];
-      // cache in a map, keyed by global-var
-      if (PSI &&
-          !PSI->isColdCount(VTable2CandidateInfo[VCIndex].VTableValCount)) {
-        createVTableAddressPointOffsetVar(
-            VTable2CandidateInfo[VCIndex].VTableVariable,
-            VTable2CandidateInfo[VCIndex].AddressPointOffset);
-      }
+      createVTableAddressPointOffsetVar(
+          VTable2CandidateInfo[VCIndex].VTableVariable,
+          VTable2CandidateInfo[VCIndex].AddressPointOffset);
     }
   }
 
