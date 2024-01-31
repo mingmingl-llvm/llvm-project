@@ -20,8 +20,8 @@ target triple = "x86_64-unknown-linux-gnu"
 ; ICALL-VTABLE-PROM: @_ZTV8Derived1 = constant { [4 x ptr] } { [4 x ptr] [ptr null, ptr null, ptr @_ZN8Derived15func1Ei, ptr @_ZN8Derived15func2Ev] }, !type [[META0]], !type [[META1:![0-9]+]]
 ; ICALL-VTABLE-PROM: @_ZTV8Derived2 = constant { [4 x ptr], [4 x ptr] } { [4 x ptr] [ptr null, ptr null, ptr @_ZN5Base25func3Ev, ptr @_ZN8Derived25func2Ev], [4 x ptr] [ptr inttoptr (i64 -8 to ptr), ptr null, ptr @_ZN5Base15func1Ei, ptr @_ZThn8_N8Derived25func2Ev] }, !type [[META2:![0-9]+]], !type [[META3:![0-9]+]], !type [[META4:![0-9]+]]
 ; ICALL-VTABLE-PROM: @_ZTV5Base2 = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN5Base25func3Ev] }, !type [[META3]]
-; ICALL-VTABLE-PROM: @_ZTV8Derived1.icp.16 = constant i64 add (i64 ptrtoint (ptr @_ZTV8Derived1 to i64), i64 16), comdat
-; ICALL-VTABLE-PROM: @_ZTV8Derived2.icp.48 = constant i64 add (i64 ptrtoint (ptr @_ZTV8Derived2 to i64), i64 48), comdat
+; ICALL-VTABLE-PROM: @_ZTV8Derived1.icp.16 = alias ptr, getelementptr inbounds ({ [4 x ptr] }, ptr @_ZTV8Derived1, i32 0, i32 0, i32 2)
+; ICALL-VTABLE-PROM: @_ZTV8Derived2.icp.48 = alias ptr, getelementptr inbounds ({ [4 x ptr], [4 x ptr] }, ptr @_ZTV8Derived2, i32 0, i32 1, i32 2)
 ;.
 define i32 @_Z4funcP5Base1(ptr %d) {
 ; ICALL-PROM-LABEL: define i32 @_Z4funcP5Base1(
@@ -133,54 +133,3 @@ define i32 @_ZN8Derived15func2Ev(ptr %this) {
 !19 = !{i64 16, !"_ZTS8Derived2"}
 !20 = !{!"VP", i32 2, i64 1600, i64 -9064381665493407289, i64 800, i64 5035968517245772950, i64 800}
 !21 = !{!"VP", i32 0, i64 1600, i64 8283424862230071372, i64 800, i64 -7571493466221013720, i64 800}
-;.
-; ICALL-PROM: attributes #[[ATTR0:[0-9]+]] = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-; ICALL-PROM: attributes #[[ATTR1:[0-9]+]] = { nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write) }
-;.
-; ICALL-VTABLE-PROM: attributes #[[ATTR0:[0-9]+]] = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-; ICALL-VTABLE-PROM: attributes #[[ATTR1:[0-9]+]] = { nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write) }
-;.
-; ICALL-PROM: [[META0]] = !{i64 16, !"_ZTS5Base1"}
-; ICALL-PROM: [[META1]] = !{i64 16, !"_ZTS8Derived1"}
-; ICALL-PROM: [[META2]] = !{i64 48, !"_ZTS5Base1"}
-; ICALL-PROM: [[META3]] = !{i64 16, !"_ZTS5Base2"}
-; ICALL-PROM: [[META4]] = !{i64 16, !"_ZTS8Derived2"}
-; ICALL-PROM: [[META5:![0-9]+]] = !{i32 1, !"ProfileSummary", [[META6:![0-9]+]]}
-; ICALL-PROM: [[META6]] = !{[[META7:![0-9]+]], [[META8:![0-9]+]], [[META9:![0-9]+]], [[META10:![0-9]+]], [[META11:![0-9]+]], [[META12:![0-9]+]], [[META13:![0-9]+]], [[META14:![0-9]+]]}
-; ICALL-PROM: [[META7]] = !{!"ProfileFormat", !"InstrProf"}
-; ICALL-PROM: [[META8]] = !{!"TotalCount", i64 10000}
-; ICALL-PROM: [[META9]] = !{!"MaxCount", i64 200}
-; ICALL-PROM: [[META10]] = !{!"MaxInternalCount", i64 200}
-; ICALL-PROM: [[META11]] = !{!"MaxFunctionCount", i64 200}
-; ICALL-PROM: [[META12]] = !{!"NumCounts", i64 3}
-; ICALL-PROM: [[META13]] = !{!"NumFunctions", i64 3}
-; ICALL-PROM: [[META14]] = !{!"DetailedSummary", [[META15:![0-9]+]]}
-; ICALL-PROM: [[META15]] = !{[[META16:![0-9]+]], [[META17:![0-9]+]], [[META18:![0-9]+]]}
-; ICALL-PROM: [[META16]] = !{i32 10000, i64 100, i32 1}
-; ICALL-PROM: [[META17]] = !{i32 990000, i64 100, i32 1}
-; ICALL-PROM: [[META18]] = !{i32 999999, i64 1, i32 2}
-; ICALL-PROM: [[PROF19]] = !{!"branch_weights", i32 800, i32 800}
-; ICALL-PROM: [[PROF20]] = !{!"branch_weights", i32 800, i32 0}
-;.
-; ICALL-VTABLE-PROM: [[META0]] = !{i64 16, !"_ZTS5Base1"}
-; ICALL-VTABLE-PROM: [[META1]] = !{i64 16, !"_ZTS8Derived1"}
-; ICALL-VTABLE-PROM: [[META2]] = !{i64 48, !"_ZTS5Base1"}
-; ICALL-VTABLE-PROM: [[META3]] = !{i64 16, !"_ZTS5Base2"}
-; ICALL-VTABLE-PROM: [[META4]] = !{i64 16, !"_ZTS8Derived2"}
-; ICALL-VTABLE-PROM: [[META5:![0-9]+]] = !{i32 1, !"ProfileSummary", [[META6:![0-9]+]]}
-; ICALL-VTABLE-PROM: [[META6]] = !{[[META7:![0-9]+]], [[META8:![0-9]+]], [[META9:![0-9]+]], [[META10:![0-9]+]], [[META11:![0-9]+]], [[META12:![0-9]+]], [[META13:![0-9]+]], [[META14:![0-9]+]]}
-; ICALL-VTABLE-PROM: [[META7]] = !{!"ProfileFormat", !"InstrProf"}
-; ICALL-VTABLE-PROM: [[META8]] = !{!"TotalCount", i64 10000}
-; ICALL-VTABLE-PROM: [[META9]] = !{!"MaxCount", i64 200}
-; ICALL-VTABLE-PROM: [[META10]] = !{!"MaxInternalCount", i64 200}
-; ICALL-VTABLE-PROM: [[META11]] = !{!"MaxFunctionCount", i64 200}
-; ICALL-VTABLE-PROM: [[META12]] = !{!"NumCounts", i64 3}
-; ICALL-VTABLE-PROM: [[META13]] = !{!"NumFunctions", i64 3}
-; ICALL-VTABLE-PROM: [[META14]] = !{!"DetailedSummary", [[META15:![0-9]+]]}
-; ICALL-VTABLE-PROM: [[META15]] = !{[[META16:![0-9]+]], [[META17:![0-9]+]], [[META18:![0-9]+]]}
-; ICALL-VTABLE-PROM: [[META16]] = !{i32 10000, i64 100, i32 1}
-; ICALL-VTABLE-PROM: [[META17]] = !{i32 990000, i64 100, i32 1}
-; ICALL-VTABLE-PROM: [[META18]] = !{i32 999999, i64 1, i32 2}
-; ICALL-VTABLE-PROM: [[PROF19]] = !{!"branch_weights", i32 800, i32 800}
-; ICALL-VTABLE-PROM: [[PROF20]] = !{!"branch_weights", i32 800, i32 0}
-;.

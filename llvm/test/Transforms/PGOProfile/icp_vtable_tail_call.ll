@@ -17,8 +17,8 @@ target triple = "x86_64-unknown-linux-gnu"
 ;.
 ; ICALL-VTABLE: @_ZTV7Derived = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN7Derived5func1Eii] }, align 8, !type [[META0:![0-9]+]], !type [[META1:![0-9]+]], !type [[META2:![0-9]+]], !type [[META3:![0-9]+]]
 ; ICALL-VTABLE: @_ZTV4Base = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN4Base5func1Eii] }, align 8, !type [[META0]], !type [[META1]]
-; ICALL-VTABLE: @_ZTV7Derived.icp.16 = constant i64 add (i64 ptrtoint (ptr @_ZTV7Derived to i64), i64 16), comdat
-; ICALL-VTABLE: @_ZTV4Base.icp.16 = constant i64 add (i64 ptrtoint (ptr @_ZTV4Base to i64), i64 16), comdat
+; ICALL-VTABLE: @_ZTV7Derived.icp.16 = alias ptr, getelementptr inbounds ({ [3 x ptr] }, ptr @_ZTV7Derived, i32 0, i32 0, i32 2)
+; ICALL-VTABLE: @_ZTV4Base.icp.16 = alias ptr, getelementptr inbounds ({ [3 x ptr] }, ptr @_ZTV4Base, i32 0, i32 0, i32 2)
 ;.
 define i32 @test_tail_call(ptr %ptr, i32 %a, i32 %b) {
 ; ICALL-FUNC-LABEL: define i32 @test_tail_call(
@@ -77,12 +77,24 @@ entry:
 declare i1 @llvm.type.test(ptr, metadata)
 declare void @llvm.assume(i1)
 define i32 @_ZN7Derived5func1Eii(ptr %this, i32 %a, i32 %b) {
+; REMARK-LABEL: define i32 @_ZN7Derived5func1Eii(
+; REMARK-SAME: ptr [[THIS:%.*]], i32 [[A:%.*]], i32 [[B:%.*]]) {
+; REMARK-NEXT:  entry:
+; REMARK-NEXT:    [[SUB:%.*]] = sub nsw i32 [[A]], [[B]]
+; REMARK-NEXT:    ret i32 [[SUB]]
+;
 entry:
   %sub = sub nsw i32 %a, %b
   ret i32 %sub
 }
 
 define i32 @_ZN4Base5func1Eii(ptr %this, i32 %a, i32 %b) {
+; REMARK-LABEL: define i32 @_ZN4Base5func1Eii(
+; REMARK-SAME: ptr [[THIS:%.*]], i32 [[A:%.*]], i32 [[B:%.*]]) {
+; REMARK-NEXT:  entry:
+; REMARK-NEXT:    [[ADD:%.*]] = add nsw i32 [[B]], [[A]]
+; REMARK-NEXT:    ret i32 [[ADD]]
+;
 entry:
   %add = add nsw i32 %b, %a
   ret i32 %add

@@ -26,9 +26,9 @@ target triple = "x86_64-unknown-linux-gnu"
 ; ICALL-VTABLE: @_ZTV5Base2 = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN5Base25func2Ev] }, !type [[META1]]
 ; ICALL-VTABLE: @_ZTV8Derived2 = constant { [3 x ptr], [3 x ptr], [4 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN5Base35func3Ev], [3 x ptr] [ptr inttoptr (i64 -8 to ptr), ptr null, ptr @_ZN5Base25func2Ev], [4 x ptr] [ptr inttoptr (i64 -16 to ptr), ptr null, ptr @_ZN5Base15func0Ev, ptr @_ZN5Base15func1Ev] }, !type [[META3:![0-9]+]], !type [[META4:![0-9]+]], !type [[META5:![0-9]+]], !type [[META6:![0-9]+]]
 ; ICALL-VTABLE: @_ZTV5Base3 = constant { [3 x ptr] } { [3 x ptr] [ptr null, ptr null, ptr @_ZN5Base35func3Ev] }, !type [[META5]]
-; ICALL-VTABLE: @_ZTV8Derived1.icp.16 = constant i64 add (i64 ptrtoint (ptr @_ZTV8Derived1 to i64), i64 16), comdat
-; ICALL-VTABLE: @_ZTV8Derived2.icp.64 = constant i64 add (i64 ptrtoint (ptr @_ZTV8Derived2 to i64), i64 64), comdat
-; ICALL-VTABLE: @_ZTV5Base1.icp.16 = constant i64 add (i64 ptrtoint (ptr @_ZTV5Base1 to i64), i64 16), comdat
+; ICALL-VTABLE: @_ZTV8Derived1.icp.16 = alias ptr, getelementptr inbounds ({ [4 x ptr], [3 x ptr] }, ptr @_ZTV8Derived1, i32 0, i32 0, i32 2)
+; ICALL-VTABLE: @_ZTV8Derived2.icp.64 = alias ptr, getelementptr inbounds ({ [3 x ptr], [3 x ptr], [4 x ptr] }, ptr @_ZTV8Derived2, i32 0, i32 2, i32 2)
+; ICALL-VTABLE: @_ZTV5Base1.icp.16 = alias ptr, getelementptr inbounds ({ [4 x ptr] }, ptr @_ZTV5Base1, i32 0, i32 0, i32 2)
 ;.
 define i32 @test_one_function_two_offsets_three_vtables(ptr %d) {
 ; ICALL-PROM-LABEL: define i32 @test_one_function_two_offsets_three_vtables(

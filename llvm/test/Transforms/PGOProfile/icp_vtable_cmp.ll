@@ -22,9 +22,9 @@ target triple = "x86_64-unknown-linux-gnu"
 ; ICALL-VTABLE: @_ZTV8Derived1 = constant { [4 x ptr] } { [4 x ptr] [ptr null, ptr null, ptr @_ZN8Derived15func1Ei, ptr @_ZN4Base5func2Ev] }, !type [[META0]], !type [[META1:![0-9]+]]
 ; ICALL-VTABLE: @_ZTV8Derived2 = constant { [4 x ptr] } { [4 x ptr] [ptr null, ptr null, ptr @_ZN8Derived25func1Ei, ptr @_ZN4Base5func2Ev] }, !type [[META0]], !type [[META2:![0-9]+]]
 ; ICALL-VTABLE: @_ZTV8Derived3 = constant { [4 x ptr] } { [4 x ptr] [ptr null, ptr null, ptr @_ZN8Derived35func1Ei, ptr @_ZN4Base5func2Ev] }, !type [[META0]], !type [[META3:![0-9]+]]
-; ICALL-VTABLE: @_ZTV8Derived2.icp.16 = constant i64 add (i64 ptrtoint (ptr @_ZTV8Derived2 to i64), i64 16), comdat
-; ICALL-VTABLE: @_ZTV8Derived1.icp.16 = constant i64 add (i64 ptrtoint (ptr @_ZTV8Derived1 to i64), i64 16), comdat
-; ICALL-VTABLE: @_ZTV4Base.icp.16 = constant i64 add (i64 ptrtoint (ptr @_ZTV4Base to i64), i64 16), comdat
+; ICALL-VTABLE: @_ZTV8Derived2.icp.16 = alias ptr, getelementptr inbounds ({ [4 x ptr] }, ptr @_ZTV8Derived2, i32 0, i32 0, i32 2)
+; ICALL-VTABLE: @_ZTV8Derived1.icp.16 = alias ptr, getelementptr inbounds ({ [4 x ptr] }, ptr @_ZTV8Derived1, i32 0, i32 0, i32 2)
+; ICALL-VTABLE: @_ZTV4Base.icp.16 = alias ptr, getelementptr inbounds ({ [4 x ptr] }, ptr @_ZTV4Base, i32 0, i32 0, i32 2)
 ;.
 define i32 @test_one_function_one_vtable(ptr %d) {
 ; ICALL-FUNC-LABEL: define i32 @test_one_function_one_vtable(
@@ -244,16 +244,6 @@ declare i32 @_ZN8Derived25func1Ei(ptr, i32)
 declare i32 @_ZN8Derived35func1Ei(ptr, i32)
 
 define i32 @_ZN4Base5func2Ev(ptr %this) {
-; ICALL-FUNC-LABEL: define i32 @_ZN4Base5func2Ev(
-; ICALL-FUNC-SAME: ptr [[THIS:%.*]]) {
-; ICALL-FUNC-NEXT:  entry:
-; ICALL-FUNC-NEXT:    ret i32 0
-;
-; ICALL-VTABLE-LABEL: define i32 @_ZN4Base5func2Ev(
-; ICALL-VTABLE-SAME: ptr [[THIS:%.*]]) {
-; ICALL-VTABLE-NEXT:  entry:
-; ICALL-VTABLE-NEXT:    ret i32 0
-;
 entry:
   ret i32 0
 }
@@ -285,51 +275,3 @@ entry:
 !21 = !{!"VP", i32 2, i64 1600, i64 -9064381665493407289, i64 1000, i64 5035968517245772950, i64 600}
 !22 = !{!"VP", i32 2, i64 1600, i64 5035968517245772950, i64 1600}
 !23 = !{!"VP", i32 2, i64 1600, i64 -9064381665493407289, i64 550, i64 5035968517245772950, i64 450, i64 1960855528937986108, i64 310, i64 -3121110164882083017, i64 290}
-;.
-; ICALL-FUNC: attributes #[[ATTR0:[0-9]+]] = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-; ICALL-FUNC: attributes #[[ATTR1:[0-9]+]] = { nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write) }
-;.
-; ICALL-VTABLE: attributes #[[ATTR0:[0-9]+]] = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-; ICALL-VTABLE: attributes #[[ATTR1:[0-9]+]] = { nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write) }
-;.
-; ICALL-FUNC: [[META0]] = !{i64 16, !"_ZTS4Base"}
-; ICALL-FUNC: [[META1]] = !{i64 16, !"_ZTS8Derived1"}
-; ICALL-FUNC: [[META2]] = !{i64 16, !"_ZTS8Derived2"}
-; ICALL-FUNC: [[META3]] = !{i64 16, !"_ZTS8Derived3"}
-; ICALL-FUNC: [[META4:![0-9]+]] = !{i32 1, !"ProfileSummary", [[META5:![0-9]+]]}
-; ICALL-FUNC: [[META5]] = !{[[META6:![0-9]+]], [[META7:![0-9]+]], [[META8:![0-9]+]], [[META9:![0-9]+]], [[META10:![0-9]+]], [[META11:![0-9]+]], [[META12:![0-9]+]], [[META13:![0-9]+]]}
-; ICALL-FUNC: [[META6]] = !{!"ProfileFormat", !"InstrProf"}
-; ICALL-FUNC: [[META7]] = !{!"TotalCount", i64 10000}
-; ICALL-FUNC: [[META8]] = !{!"MaxCount", i64 200}
-; ICALL-FUNC: [[META9]] = !{!"MaxInternalCount", i64 200}
-; ICALL-FUNC: [[META10]] = !{!"MaxFunctionCount", i64 200}
-; ICALL-FUNC: [[META11]] = !{!"NumCounts", i64 3}
-; ICALL-FUNC: [[META12]] = !{!"NumFunctions", i64 3}
-; ICALL-FUNC: [[META13]] = !{!"DetailedSummary", [[META14:![0-9]+]]}
-; ICALL-FUNC: [[META14]] = !{[[META15:![0-9]+]], [[META16:![0-9]+]], [[META17:![0-9]+]]}
-; ICALL-FUNC: [[META15]] = !{i32 10000, i64 100, i32 1}
-; ICALL-FUNC: [[META16]] = !{i32 990000, i64 100, i32 1}
-; ICALL-FUNC: [[META17]] = !{i32 999999, i64 1, i32 2}
-; ICALL-FUNC: [[PROF18]] = !{!"branch_weights", i32 1600, i32 0}
-;.
-; ICALL-VTABLE: [[META0]] = !{i64 16, !"_ZTS4Base"}
-; ICALL-VTABLE: [[META1]] = !{i64 16, !"_ZTS8Derived1"}
-; ICALL-VTABLE: [[META2]] = !{i64 16, !"_ZTS8Derived2"}
-; ICALL-VTABLE: [[META3]] = !{i64 16, !"_ZTS8Derived3"}
-; ICALL-VTABLE: [[META4:![0-9]+]] = !{i32 1, !"ProfileSummary", [[META5:![0-9]+]]}
-; ICALL-VTABLE: [[META5]] = !{[[META6:![0-9]+]], [[META7:![0-9]+]], [[META8:![0-9]+]], [[META9:![0-9]+]], [[META10:![0-9]+]], [[META11:![0-9]+]], [[META12:![0-9]+]], [[META13:![0-9]+]]}
-; ICALL-VTABLE: [[META6]] = !{!"ProfileFormat", !"InstrProf"}
-; ICALL-VTABLE: [[META7]] = !{!"TotalCount", i64 10000}
-; ICALL-VTABLE: [[META8]] = !{!"MaxCount", i64 200}
-; ICALL-VTABLE: [[META9]] = !{!"MaxInternalCount", i64 200}
-; ICALL-VTABLE: [[META10]] = !{!"MaxFunctionCount", i64 200}
-; ICALL-VTABLE: [[META11]] = !{!"NumCounts", i64 3}
-; ICALL-VTABLE: [[META12]] = !{!"NumFunctions", i64 3}
-; ICALL-VTABLE: [[META13]] = !{!"DetailedSummary", [[META14:![0-9]+]]}
-; ICALL-VTABLE: [[META14]] = !{[[META15:![0-9]+]], [[META16:![0-9]+]], [[META17:![0-9]+]]}
-; ICALL-VTABLE: [[META15]] = !{i32 10000, i64 100, i32 1}
-; ICALL-VTABLE: [[META16]] = !{i32 990000, i64 100, i32 1}
-; ICALL-VTABLE: [[META17]] = !{i32 999999, i64 1, i32 2}
-; ICALL-VTABLE: [[PROF18]] = !{!"branch_weights", i32 1600, i32 0}
-; ICALL-VTABLE: [[PROF19]] = !{!"branch_weights", i32 0, i32 -2}
-;.

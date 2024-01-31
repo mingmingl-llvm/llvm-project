@@ -571,9 +571,6 @@ void IndirectCallPromoter::createVTableAddressPointOffsetVar(
 
   IRBuilder<> Builder(F.getContext());
 
-  // Type is the type to be compared with.
-  Constant *VTableVar = ConstantExpr::getPtrToInt(VTable, Builder.getInt64Ty());
-
   // Linkage is about symbol resolution, and comdat is about whether/how
   // sections are discarded as a unit.
   std::string Name =
@@ -592,7 +589,7 @@ void IndirectCallPromoter::createVTableAddressPointOffsetVar(
   // DataLayout::getGEPIndicesForOffset
   const DataLayout& DL = M.getDataLayout();
   LLVMContext& Context = M.getContext();
-  Type* VTableType = VTable->getType();
+  Type *VTableType = VTable->getValueType();
   APInt AddressPointOffsetAPInt(32, AddressPointOffset, false);
   SmallVector<APInt> Indices = DL.getGEPIndicesForOffset(VTableType, AddressPointOffsetAPInt);
   SmallVector<llvm::Value*> GEPIndices;
@@ -600,7 +597,8 @@ void IndirectCallPromoter::createVTableAddressPointOffsetVar(
     GEPIndices.push_back(llvm::ConstantInt::get(Type::getInt32Ty(Context), Index.getZExtValue()));
   }
 
-  Constant* GEPAlias = ConstantExpr::getInBoundsGetElementPtr(VTable->getType(), VTable, GEPIndices);
+  Constant *GEPAlias = ConstantExpr::getInBoundsGetElementPtr(
+      VTable->getValueType(), VTable, GEPIndices);
 
   GlobalAlias* VTableAlias = GlobalAlias::create(Builder.getPtrTy(), 0, Linkage, Name, GEPAlias, &M);
 
