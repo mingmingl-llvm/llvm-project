@@ -7,16 +7,15 @@
 int Derived1::func1(int a, int b) { return a + b; }
 int Derived1::func2(int a, int b) { return a * b; }
 
+int Derived2::func1(int a, int b) { return a - b; }
+
+int Derived2::func2(int a, int b) {return a * (a - b); }
+
 namespace {
-class Derived2 : public Base {
-public:
-  ~Derived2() override = default;
-  int func1(int a, int b) override { return a - b; }
-  int func2(int a, int b) override { return a * (a - b); }
-};
+
 } // namespace
 
-Base *createType(int a) {
+__attribute__((noinline)) Base *createType(int a) {
   Base *base = nullptr;
   if (a % 4 == 0)
     base = new Derived1();

@@ -14,5 +14,12 @@ class Derived1 : public Base {
     int func2(int a, int b) override;
 };
 
-Base* createType(int a);
+class Derived2 : public Base {
+public:
+  ~Derived2() override = default;
+  int func1(int a, int b) override;
+  int func2(int a, int b) override;
+};
+
+__attribute__((noinline)) Base* createType(int a);
 

@@ -242,7 +242,7 @@ private:
       const CallBase &CB,
       SmallVector<VTableCandidateInfo> &VTable2CandidateInfo);
 
-  void maybeSetComdatForVTableOffsetedVar(GlobalVariable *OffsetVar,
+  void maybeSetComdatForVTableOffsetedVar(GlobalAlias *OffsetVar,
                                           const GlobalVariable &VTableVar,
                                           Module &M);
 
@@ -250,7 +250,7 @@ public:
   IndirectCallPromoter(
       Function &Func, InstrProfSymtab *Symtab, bool SamplePGO,
       DenseMap<const CallBase *, VirtualCallInfo> &VirtualCallToTypeInfo,
-      DenseMap<const GlobalVariable *, DenseMap<int, GlobalVariable *>>
+      DenseMap<const GlobalVariable *, DenseMap<int, GlobalAlias *>>
           &VTableDefToAddressPointOffsetVarMap,
       OptimizationRemarkEmitter &ORE)
       : F(Func), M(*Func.getParent()), TT(Triple(M.getTargetTriple())),
@@ -538,8 +538,10 @@ IndirectCallPromoter::CompareOption IndirectCallPromoter::analyzeProfiles(
 }
 
 void IndirectCallPromoter::maybeSetComdatForVTableOffsetedVar(
-    GlobalVariable *OffsetVar, const GlobalVariable &VTableVar, Module &M) {
-  const bool NeedComdat = needsComdatForCounter(VTableVar, M);
+    GlobalAlias *OffsetVar, const GlobalVariable &VTableVar, Module &M) {
+  // FIXME: You don't need a comdat for an alias.
+  return;
+  /* const bool NeedComdat = needsComdatForCounter(VTableVar, M);
   const bool UseComdat = (NeedComdat || TT.isOSBinFormatELF());
 
   if (!UseComdat)
@@ -556,7 +558,7 @@ void IndirectCallPromoter::maybeSetComdatForVTableOffsetedVar(
   if (!NeedComdat)
     C->setSelectionKind(Comdat::NoDeduplicate);
 
-  OffsetVar->setComdat(C);
+  OffsetVar->setComdat(C); */
 }
 
 void IndirectCallPromoter::createVTableAddressPointOffsetVar(
@@ -585,19 +587,29 @@ void IndirectCallPromoter::createVTableAddressPointOffsetVar(
   else if (Linkage == GlobalValue::AvailableExternallyLinkage)
     Linkage = GlobalValue::LinkOnceODRLinkage;
 
-  GlobalVariable *AddressPointOffsetVar = new GlobalVariable(
-      M, Builder.getInt64Ty(), /* constant= */ true, Linkage,
-      ConstantExpr::getAdd(VTableVar, ConstantInt::get(Builder.getInt64Ty(),
-                                                       AddressPointOffset,
-                                                       /* isSigned= */ false)),
-      Name);
+  // This is WRONG.
+  // You should create an alias the address of GEP(VTABLE)..., using
+  // DataLayout::getGEPIndicesForOffset
+  const DataLayout& DL = M.getDataLayout();
+  LLVMContext& Context = M.getContext();
+  Type* VTableType = VTable->getType();
+  APInt AddressPointOffsetAPInt(32, AddressPointOffset, false);
+  SmallVector<APInt> Indices = DL.getGEPIndicesForOffset(VTableType, AddressPointOffsetAPInt);
+  SmallVector<llvm::Value*> GEPIndices;
+  for (const auto& Index : Indices) {
+    GEPIndices.push_back(llvm::ConstantInt::get(Type::getInt32Ty(Context), Index.getZExtValue()));
+  }
+
+  Constant* GEPAlias = ConstantExpr::getInBoundsGetElementPtr(VTable->getType(), VTable, GEPIndices);
+
+  GlobalAlias* VTableAlias = GlobalAlias::create(Builder.getPtrTy(), 0, Linkage, Name, GEPAlias, &M);
 
   // Put the global variables corresponding to a <vtable-var, offset>
   // into one comdat group.
-  maybeSetComdatForVTableOffsetedVar(AddressPointOffsetVar, *VTable, M);
+  maybeSetComdatForVTableOffsetedVar(VTableAlias, *VTable, M);
 
   VTableDefToAddressPointOffsetVarMap[VTable][AddressPointOffset] =
-      AddressPointOffsetVar;
+      VTableAlias;
 
   // Specifically, the vtable-based comparisons should reference the global
   // variables. The lifetime of offseted variable and the vtable it references
@@ -940,7 +952,7 @@ static bool promoteIndirectCalls(Module &M, ProfileSummaryInfo *PSI, bool InLTO,
 
   computeVirtualCallToTypeInfo(M, MAM, VirtualCallToTypeInfo);
 
-  DenseMap<const GlobalVariable *, DenseMap<int, GlobalVariable *>>
+  DenseMap<const GlobalVariable *, DenseMap<int, GlobalAlias *>>
       VTableDefToAddressPointOffsetVarMap;
 
   bool Changed = false;

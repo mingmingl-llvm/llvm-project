@@ -88,7 +88,7 @@ CallBase &promoteCallWithIfThenElse(CallBase &CB, Function *Callee,
 // which the key is an address point offset, and value is a global variable to
 // represent `vtable-addr + address-point-offset`.
 using VTableOffsetVarMap =
-    DenseMap<const GlobalVariable *, DenseMap<int, GlobalVariable *>>;
+    DenseMap<const GlobalVariable *, DenseMap<int, GlobalAlias *>>;
 
 /// Promote the given indirect call to a conditional call using vtable
 /// information.

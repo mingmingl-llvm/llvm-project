@@ -630,7 +630,7 @@ CallBase &llvm::promoteIndirectCallWithVTableInfo(
       continue;
 
     // FIXME: asserts that the global variable `OffsetVar` has type Int64Ty
-    GlobalVariable *OffsetVar = OffsetVarIter->second;
+    GlobalAlias *OffsetVar = OffsetVarIter->second;
     Value *ICmp = Builder.CreateICmpEQ(VTableInstr, OffsetVar);
     ICmps.push_back(ICmp);
   }
