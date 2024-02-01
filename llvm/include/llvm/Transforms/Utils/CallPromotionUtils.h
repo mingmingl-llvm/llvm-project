@@ -14,7 +14,6 @@
 #ifndef LLVM_TRANSFORMS_UTILS_CALLPROMOTIONUTILS_H
 #define LLVM_TRANSFORMS_UTILS_CALLPROMOTIONUTILS_H
 
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/IR/GlobalVariable.h"
 
 namespace llvm {
@@ -84,19 +83,13 @@ CallBase &promoteCall(CallBase &CB, Function *Callee,
 CallBase &promoteCallWithIfThenElse(CallBase &CB, Function *Callee,
                                     MDNode *BranchWeights = nullptr);
 
-// Key is a global variable representing vtables, and value is another map, in
-// which the key is an address point offset, and value is a global variable to
-// represent `vtable-addr + address-point-offset`.
-using VTableOffsetVarMap =
-    DenseMap<const GlobalVariable *, DenseMap<int, GlobalAlias *>>;
-
 /// Promote the given indirect call to a conditional call using vtable
 /// information.
 CallBase &promoteIndirectCallWithVTableInfo(
     CallBase &CB, Function *TargetFunction, Instruction *VPtr,
     const SmallVector<VTableCandidateInfo> &VTable2Candidate,
     const std::vector<int> &VTableIndices,
-    const VTableOffsetVarMap &VTableOffsetToValueMap,
+    const std::unordered_map<int, Value *> &VTableOffsetToValueMap,
     uint64_t &SumPromotedVTableCount, MDNode *BranchWeights);
 
 /// Try to promote (devirtualize) a virtual call on an Alloca. Return true on

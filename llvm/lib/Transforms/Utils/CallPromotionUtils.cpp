@@ -574,13 +574,11 @@ CallBase &promoteIndirectTailCallWithVTableInfo(CallBase &CB,
 //
 // bb.merge:
 //   res = phi [res1, if.then] [res2, if.else]
-using VTableOffsetVarMap =
-    DenseMap<const GlobalVariable *, DenseMap<int, GlobalVariable *>>;
 CallBase &llvm::promoteIndirectCallWithVTableInfo(
     CallBase &CB, Function *TargetFunction, Instruction *VPtr,
     const SmallVector<VTableCandidateInfo> &VTable2Candidate,
     const std::vector<int> &VTableIndices,
-    const VTableOffsetVarMap &VTableOffsetToValueMap,
+    const std::unordered_map<int, Value *> &VTableOffsetToValueMap,
     uint64_t &SumPromotedVTableCount, MDNode *BranchWeights) {
   SumPromotedVTableCount = 0;
 
@@ -618,20 +616,17 @@ CallBase &llvm::promoteIndirectCallWithVTableInfo(
   std::vector<Value *> ICmps;
   for (auto Index : VTableIndices) {
     SumPromotedVTableCount += VTable2Candidate[Index].VTableValCount;
-    const auto &VTableInfo = VTable2Candidate[Index];
+    const auto &VTableInfoInfo = VTable2Candidate[Index];
 
-    auto VTableMapIter = VTableOffsetToValueMap.find(VTableInfo.VTableVariable);
-    if (VTableMapIter == VTableOffsetToValueMap.end())
-      continue;
+    Value *VTableVar = Builder.CreatePtrToInt(VTableInfoInfo.VTableVariable,
+                                              Builder.getInt64Ty());
+    assert(VTableOffsetToValueMap.find(VTableInfoInfo.AddressPointOffset) !=
+               VTableOffsetToValueMap.end() &&
+           "Didn't find a value for offset");
 
-    const auto &SubMap = VTableMapIter->second;
-    auto OffsetVarIter = SubMap.find(VTableInfo.AddressPointOffset);
-    if (OffsetVarIter == SubMap.end())
-      continue;
-
-    // FIXME: asserts that the global variable `OffsetVar` has type Int64Ty
-    GlobalAlias *OffsetVar = OffsetVarIter->second;
-    Value *ICmp = Builder.CreateICmpEQ(VTableInstr, OffsetVar);
+    Value *OffsetVar =
+        VTableOffsetToValueMap.at(VTableInfoInfo.AddressPointOffset);
+    Value *ICmp = Builder.CreateICmpEQ(VTableVar, OffsetVar);
     ICmps.push_back(ICmp);
   }
 
