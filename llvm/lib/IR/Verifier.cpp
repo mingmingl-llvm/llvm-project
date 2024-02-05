@@ -851,6 +851,16 @@ void Verifier::visitGlobalVariable(const GlobalVariable &GV) {
                      "DIGlobalVariableExpression");
   }
 
+  SmallVector<MDNode *, 2> Types;
+  GV.getMetadata(LLVMContext::MD_type, Types);
+  SmallPtrSet<const Metadata *, 2> TypeIdSet;
+  for (MDNode *Type : Types) {
+    const Metadata *TypeId = Type->getOperand(1).get();
+    Check(TypeIdSet.count(TypeId) == 0,
+          "Global variable has type metadatas with duplicate type ids", &GV);
+    TypeIdSet.insert(TypeId);
+  }
+
   // Scalable vectors cannot be global variables, since we don't know
   // the runtime size.
   Check(!GV.getValueType()->isScalableTy(),
