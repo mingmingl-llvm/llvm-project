@@ -472,6 +472,10 @@ public:
     /// means the symbol was externally visible.
     unsigned CanAutoHide : 1;
 
+    /// In combined summary, indicates whether a summary should be imported as
+    /// definition or declaration.
+    unsigned ImportAsDec : 1;
+
     /// Convenience Constructors
     explicit GVFlags(GlobalValue::LinkageTypes Linkage,
                      GlobalValue::VisibilityTypes Visibility,
@@ -479,7 +483,7 @@ public:
                      bool CanAutoHide)
         : Linkage(Linkage), Visibility(Visibility),
           NotEligibleToImport(NotEligibleToImport), Live(Live),
-          DSOLocal(IsLocal), CanAutoHide(CanAutoHide) {}
+          DSOLocal(IsLocal), CanAutoHide(CanAutoHide), ImportAsDec(0) {}
   };
 
 private:

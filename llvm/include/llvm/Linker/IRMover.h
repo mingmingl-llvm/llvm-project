@@ -77,7 +77,8 @@ public:
   /// - \p IsPerformingImport is true when this IR link is to perform ThinLTO
   ///   function importing from Src.
   Error move(std::unique_ptr<Module> Src, ArrayRef<GlobalValue *> ValuesToLink,
-             LazyCallback AddLazyFor, bool IsPerformingImport);
+             ArrayRef<GlobalValue *> ProtosToLink, LazyCallback AddLazyFor,
+             bool IsPerformingImport);
   Module &getModule() { return Composite; }
 
 private:

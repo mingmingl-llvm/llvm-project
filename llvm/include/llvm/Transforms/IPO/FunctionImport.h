@@ -113,7 +113,8 @@ public:
         ClearDSOLocalOnDeclarations(ClearDSOLocalOnDeclarations) {}
 
   /// Import functions in Module \p M based on the supplied import list.
-  Expected<bool> importFunctions(Module &M, const ImportMapTy &ImportList);
+  Expected<bool> importFunctions(Module &M, const ImportMapTy &ImportList,
+                                 const ImportMapTy &ImportDecList);
 
 private:
   /// The summaries index used to trigger importing.

@@ -1129,7 +1129,8 @@ static void ComputeCrossModuleImportForModuleForTest(
 /// FunctionImporter::importFunctions() above (see description there).
 static void ComputeCrossModuleImportForModuleFromIndexForTest(
     StringRef ModulePath, const ModuleSummaryIndex &Index,
-    FunctionImporter::ImportMapTy &ImportList) {
+    FunctionImporter::ImportMapTy &ImportDefList,
+    FunctionImporter::ImportMapTy &ImportDecList) {
   for (const auto &GlobalList : Index) {
     // Ignore entries for undefined references.
     if (GlobalList.second.SummaryList.empty())
@@ -1143,11 +1144,15 @@ static void ComputeCrossModuleImportForModuleFromIndexForTest(
     // e.g. record required linkage changes.
     if (Summary->modulePath() == ModulePath)
       continue;
+
     // Add an entry to provoke importing by thinBackend.
-    ImportList[Summary->modulePath()].insert(GUID);
+    if (static_cast<bool>(Summary->flags().ImportAsDec))
+      ImportDecList[Summary->modulePath()].insert(GUID);
+    else
+      ImportDefList[Summary->modulePath()].insert(GUID);
   }
 #ifndef NDEBUG
-  dumpImportListForModule(Index, ModulePath, ImportList);
+  dumpImportListForModule(Index, ModulePath, ImportDefList);
 #endif
 }
 
@@ -1601,7 +1606,8 @@ static void internalizeGVsAfterImport(Module &M) {
 // Automatically import functions in Module \p DestModule based on the summaries
 // index.
 Expected<bool> FunctionImporter::importFunctions(
-    Module &DestModule, const FunctionImporter::ImportMapTy &ImportList) {
+    Module &DestModule, const FunctionImporter::ImportMapTy &ImportList,
+    const FunctionImporter::ImportMapTy &ImportDecList) {
   LLVM_DEBUG(dbgs() << "Starting import for Module "
                     << DestModule.getModuleIdentifier() << "\n");
   unsigned ImportedCount = 0, ImportedGVCount = 0;
@@ -1612,10 +1618,31 @@ Expected<bool> FunctionImporter::importFunctions(
   for (const auto &FunctionsToImportPerModule : ImportList) {
     ModuleNameOrderedList.insert(FunctionsToImportPerModule.first);
   }
+
+  for (const auto &FunctionDecsToImportPerModule : ImportDecList) {
+    ModuleNameOrderedList.insert(FunctionDecsToImportPerModule.first);
+  }
+
+  FunctionImporter::FunctionsToImportTy EmptyImports;
+
+  auto getFunctionsToImport =
+      [&EmptyImports](
+          const FunctionImporter::ImportMapTy &ImportList,
+          StringRef Module) -> const FunctionImporter::FunctionsToImportTy & {
+    const auto &FunctionsToImportIter = ImportList.find(Module);
+    if (FunctionsToImportIter == ImportList.end())
+      return EmptyImports;
+    return FunctionsToImportIter->second;
+  };
+
   for (const auto &Name : ModuleNameOrderedList) {
     // Get the module for the import
-    const auto &FunctionsToImportPerModule = ImportList.find(Name);
-    assert(FunctionsToImportPerModule != ImportList.end());
+    const FunctionImporter::FunctionsToImportTy &ImportGUIDs =
+        getFunctionsToImport(ImportList, Name);
+
+    const FunctionImporter::FunctionsToImportTy &ImportDecGUIDs =
+        getFunctionsToImport(ImportDecList, Name);
+
     Expected<std::unique_ptr<Module>> SrcModuleOrErr = ModuleLoader(Name);
     if (!SrcModuleOrErr)
       return SrcModuleOrErr.takeError();
@@ -1628,9 +1655,10 @@ Expected<bool> FunctionImporter::importFunctions(
     if (Error Err = SrcModule->materializeMetadata())
       return std::move(Err);
 
-    auto &ImportGUIDs = FunctionsToImportPerModule->second;
     // Find the globals to import
     SetVector<GlobalValue *> GlobalsToImport;
+    // GlobalsToImport - GlobalDecsToImport = GlobalDefsToImport
+    SetVector<GlobalValue *> GlobalDecsToImport;
     for (Function &F : *SrcModule) {
       if (!F.hasName())
         continue;
@@ -1651,6 +1679,15 @@ Expected<bool> FunctionImporter::importFunctions(
                                          SrcModule->getSourceFileName())}));
         }
         GlobalsToImport.insert(&F);
+        continue;
+      }
+
+      auto ImportDec = ImportDecGUIDs.count(GUID);
+      // FIXME: Ensure F.materialize is not required to import declarations with
+      // attributes.
+      if (ImportDec) {
+        GlobalsToImport.insert(&F);
+        GlobalDecsToImport.insert(&F);
       }
     }
     for (GlobalVariable &GV : SrcModule->globals()) {
@@ -1713,15 +1750,17 @@ Expected<bool> FunctionImporter::importFunctions(
                                &GlobalsToImport))
       return true;
 
+    GlobalsToImport.set_subtract(GlobalDecsToImport);
     if (PrintImports) {
       for (const auto *GV : GlobalsToImport)
         dbgs() << DestModule.getSourceFileName() << ": Import " << GV->getName()
                << " from " << SrcModule->getSourceFileName() << "\n";
     }
 
-    if (Error Err = Mover.move(std::move(SrcModule),
-                               GlobalsToImport.getArrayRef(), nullptr,
-                               /*IsPerformingImport=*/true))
+    if (Error Err =
+            Mover.move(std::move(SrcModule), GlobalsToImport.getArrayRef(),
+                       GlobalDecsToImport.getArrayRef(), nullptr,
+                       /*IsPerformingImport=*/true))
       return createStringError(errc::invalid_argument,
                                Twine("Function Import: link error: ") +
                                    toString(std::move(Err)));
@@ -1759,16 +1798,17 @@ static bool doImportingForModuleForTest(
   std::unique_ptr<ModuleSummaryIndex> Index = std::move(*IndexPtrOrErr);
 
   // First step is collecting the import list.
-  FunctionImporter::ImportMapTy ImportList;
+  FunctionImporter::ImportMapTy ImportDefList;
+  FunctionImporter::ImportMapTy ImportDecList;
   // If requested, simply import all functions in the index. This is used
   // when testing distributed backend handling via the opt tool, when
   // we have distributed indexes containing exactly the summaries to import.
   if (ImportAllIndex)
-    ComputeCrossModuleImportForModuleFromIndexForTest(M.getModuleIdentifier(),
-                                                      *Index, ImportList);
+    ComputeCrossModuleImportForModuleFromIndexForTest(
+        M.getModuleIdentifier(), *Index, ImportDefList, ImportDecList);
   else
-    ComputeCrossModuleImportForModuleForTest(M.getModuleIdentifier(),
-                                             isPrevailing, *Index, ImportList);
+    ComputeCrossModuleImportForModuleForTest(
+        M.getModuleIdentifier(), isPrevailing, *Index, ImportDefList);
 
   // Conservatively mark all internal values as promoted. This interface is
   // only used when doing importing via the function importing pass. The pass
@@ -1795,7 +1835,8 @@ static bool doImportingForModuleForTest(
   };
   FunctionImporter Importer(*Index, ModuleLoader,
                             /*ClearDSOLocalOnDeclarations=*/false);
-  Expected<bool> Result = Importer.importFunctions(M, ImportList);
+  Expected<bool> Result =
+      Importer.importFunctions(M, ImportDefList, ImportDecList);
 
   // FIXME: Probably need to propagate Errors through the pass manager.
   if (!Result) {

@@ -596,9 +596,11 @@ bool ModuleLinker::run() {
 
   // FIXME: Propagate Errors through to the caller instead of emitting
   // diagnostics.
+
   bool HasErrors = false;
   if (Error E =
           Mover.move(std::move(SrcM), ValuesToLink.getArrayRef(),
+                     ArrayRef<GlobalValue *>(),
                      IRMover::LazyCallback(
                          [this](GlobalValue &GV, IRMover::ValueAdder Add) {
                            addLazyFor(GV, Add);

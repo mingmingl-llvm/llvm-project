@@ -406,6 +406,7 @@ class IRLinker {
   ValueToValueMapTy IndirectSymbolValueMap;
 
   DenseSet<GlobalValue *> ValuesToLink;
+  DenseSet<GlobalValue *> ProtosToLink;
   std::vector<GlobalValue *> Worklist;
   std::vector<std::pair<GlobalValue *, Value*>> RAUWWorklist;
 
@@ -416,6 +417,12 @@ class IRLinker {
   void maybeAdd(GlobalValue *GV) {
     if (ValuesToLink.insert(GV).second)
       Worklist.push_back(GV);
+  }
+
+  void maybeAddProto(GlobalValue *GV) {
+    if (ValuesToLink.count(GV) > 0)
+      return;
+    ProtosToLink.insert(GV);
   }
 
   /// Whether we are importing globals for ThinLTO, as opposed to linking the
@@ -539,6 +546,7 @@ public:
   IRLinker(Module &DstM, MDMapT &SharedMDs,
            IRMover::IdentifiedStructTypeSet &Set, std::unique_ptr<Module> SrcM,
            ArrayRef<GlobalValue *> ValuesToLink,
+           ArrayRef<GlobalValue *> ProtosToLink,
            IRMover::LazyCallback AddLazyFor, bool IsPerformingImport)
       : DstM(DstM), SrcM(std::move(SrcM)), AddLazyFor(std::move(AddLazyFor)),
         TypeMap(Set), GValMaterializer(*this), LValMaterializer(*this),
@@ -550,6 +558,9 @@ public:
     ValueMap.getMDMap() = std::move(SharedMDs);
     for (GlobalValue *GV : ValuesToLink)
       maybeAdd(GV);
+    for (GlobalValue *GV : ProtosToLink)
+      maybeAddProto(GV);
+
     if (IsPerformingImport)
       prepareCompileUnitsForImport();
   }
@@ -1604,6 +1615,7 @@ Error IRLinker::run() {
   DstM.setTargetTriple(SrcTriple.merge(DstTriple));
 
   // Loop over all of the linked values to compute type mappings.
+  // FIXME: Validate what it means for declaration import.
   computeTypeMapping();
 
   std::reverse(Worklist.begin(), Worklist.end());
@@ -1774,12 +1786,13 @@ IRMover::IRMover(Module &M) : Composite(M) {
 
 Error IRMover::move(std::unique_ptr<Module> Src,
                     ArrayRef<GlobalValue *> ValuesToLink,
+                    ArrayRef<GlobalValue *> ProtosToLink,
                     LazyCallback AddLazyFor, bool IsPerformingImport) {
   if (getModule().IsNewDbgInfoFormat)
     Src->convertToNewDbgValues();
   IRLinker TheIRLinker(Composite, SharedMDs, IdentifiedStructTypes,
-                       std::move(Src), ValuesToLink, std::move(AddLazyFor),
-                       IsPerformingImport);
+                       std::move(Src), ValuesToLink, ProtosToLink,
+                       std::move(AddLazyFor), IsPerformingImport);
   Error E = TheIRLinker.run();
   Composite.dropTriviallyDeadConstantArrays();
   return E;
