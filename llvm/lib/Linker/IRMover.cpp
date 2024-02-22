@@ -405,9 +405,11 @@ class IRLinker {
   ValueToValueMapTy ValueMap;
   ValueToValueMapTy IndirectSymbolValueMap;
 
+  // FIXME: de-dup code
   DenseSet<GlobalValue *> ValuesToLink;
   DenseSet<GlobalValue *> ProtosToLink;
   std::vector<GlobalValue *> Worklist;
+  std::vector<GlobalValue *> ProtosWorkList;
   std::vector<std::pair<GlobalValue *, Value*>> RAUWWorklist;
 
   /// Set of globals with eagerly copied metadata that may require remapping.
@@ -422,7 +424,8 @@ class IRLinker {
   void maybeAddProto(GlobalValue *GV) {
     if (ValuesToLink.count(GV) > 0)
       return;
-    ProtosToLink.insert(GV);
+    if (ProtosToLink.insert(GV).second)
+      ProtosWorkList.push_back(GV);
   }
 
   /// Whether we are importing globals for ThinLTO, as opposed to linking the
@@ -1629,9 +1632,26 @@ Error IRLinker::run() {
       continue;
 
     assert(!GV->isDeclaration());
+    // ShouldLink would return false -> only Protos are linked.
     Mapper.mapValue(*GV);
     if (FoundError)
       return std::move(*FoundError);
+    flushRAUWWorklist();
+  }
+
+  // FIXME: Prepend ProtosWorklist ahead of Worklist.
+  while (!ProtosWorkList.empty()) {
+    GlobalValue *GV = Worklist.back();
+    Worklist.pop_back();
+    if (ValueMap.find(GV) != ValueMap.end() ||
+        IndirectSymbolValueMap.find(GV) != IndirectSymbolValueMap.end())
+      continue;
+
+    assert(!GV->isDeclaration());
+    Mapper.mapValue(*GV);
+    if (FoundError)
+      return std::move(*FoundError);
+
     flushRAUWWorklist();
   }
 

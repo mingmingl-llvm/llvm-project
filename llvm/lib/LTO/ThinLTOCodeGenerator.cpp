@@ -223,7 +223,9 @@ crossImportIntoModule(Module &TheModule, const ModuleSummaryIndex &Index,
   };
 
   FunctionImporter Importer(Index, Loader, ClearDSOLocalOnDeclarations);
-  Expected<bool> Result = Importer.importFunctions(TheModule, ImportList);
+  FunctionImporter::ImportMapTy ImportDecList;
+  Expected<bool> Result =
+      Importer.importFunctions(TheModule, ImportList, ImportDecList);
   if (!Result) {
     handleAllErrors(Result.takeError(), [&](ErrorInfoBase &EIB) {
       SMDiagnostic Err = SMDiagnostic(TheModule.getModuleIdentifier(),

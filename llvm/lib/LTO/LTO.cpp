@@ -988,7 +988,9 @@ Error LTO::linkRegularLTO(RegularLTOState::AddedModule Mod,
     Keep.push_back(GV);
   }
 
-  return RegularLTO.Mover->move(std::move(Mod.M), Keep, nullptr,
+  std::vector<GlobalValue *> DecsToImport;
+
+  return RegularLTO.Mover->move(std::move(Mod.M), Keep, DecsToImport, nullptr,
                                 /* IsPerformingImport */ false);
 }
 

@@ -321,6 +321,7 @@ static bool importFunctions(const char *argv0, Module &DestModule) {
 
   // Map of Module -> List of globals to import from the Module
   FunctionImporter::ImportMapTy ImportList;
+  FunctionImporter::ImportMapTy ImportDecList;
 
   auto ModuleLoader = [&DestModule](const char *argv0,
                                     const std::string &Identifier) {
@@ -381,7 +382,7 @@ static bool importFunctions(const char *argv0, Module &DestModule) {
   };
   FunctionImporter Importer(*Index, CachedModuleLoader,
                             /*ClearDSOLocalOnDeclarations=*/false);
-  ExitOnErr(Importer.importFunctions(DestModule, ImportList));
+  ExitOnErr(Importer.importFunctions(DestModule, ImportList, ImportDecList));
 
   return true;
 }

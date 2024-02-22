@@ -457,6 +457,8 @@ static void computeFunctionSummary(
         for (const auto &Candidate : CandidateProfileData)
           CallGraphEdges[Index.getOrInsertValueInfo(Candidate.Value)]
               .updateHotness(getHotness(Candidate.Count, PSI));
+        
+        
       }
 
       // Summarize memprof related metadata. This is only needed for ThinLTO.
