@@ -457,8 +457,15 @@ static void computeFunctionSummary(
         for (const auto &Candidate : CandidateProfileData)
           CallGraphEdges[Index.getOrInsertValueInfo(Candidate.Value)]
               .updateHotness(getHotness(Candidate.Count, PSI));
+
+        auto IndirectCalleeTargets = getValueProfDataFromInst(
+            I, IPVK_IndirectCallTarget, 24, NumVals, TotalCount);
         
-        
+        if (IndirectCalleeTargets.get()) {
+          for (uint32_t J = 0; J < NumVals; J++) {
+            CallGraphEdges[Index.getOrInsertValueInfo(IndirectCalleeTargets[J].Value)].updateHotness(getHotness(IndirectCalleeTargets[J].Count, PSI));
+          }
+        }
       }
 
       // Summarize memprof related metadata. This is only needed for ThinLTO.

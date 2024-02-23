@@ -250,11 +250,13 @@ static auto qualifyCalleeCandidates(
 ///   number of source modules parsed/linked.
 /// - One that has PGO data attached.
 /// - [insert you fancy metric here]
-static const GlobalValueSummary *
+static std::pair<const GlobalValueSummary *, const GlobalValueSummary* >
 selectCallee(const ModuleSummaryIndex &Index,
              ArrayRef<std::unique_ptr<GlobalValueSummary>> CalleeSummaryList,
              unsigned Threshold, StringRef CallerModulePath,
              FunctionImporter::ImportFailureReason &Reason) {
+  // Stores the last too-large or noinlnie summary.
+  GlobalValueSummary* TooLargeOrNoInlineSummary = nullptr;
   auto QualifiedCandidates =
       qualifyCalleeCandidates(Index, CalleeSummaryList, CallerModulePath);
   for (auto QualifiedValue : QualifiedCandidates) {
@@ -266,19 +268,23 @@ selectCallee(const ModuleSummaryIndex &Index,
 
     if ((Summary->instCount() > Threshold) && !Summary->fflags().AlwaysInline &&
         !ForceImportAll) {
+      TooLargeOrNoInlineSummary = Summary;
       Reason = FunctionImporter::ImportFailureReason::TooLarge;
       continue;
     }
 
     // Don't bother importing if we can't inline it anyway.
     if (Summary->fflags().NoInline && !ForceImportAll) {
+      TooLargeOrNoInlineSummary = Summary;
       Reason = FunctionImporter::ImportFailureReason::NoInline;
       continue;
     }
 
-    return Summary;
+    return std::make_pair(Summary, TooLargeOrNoInlineSummary);
   }
-  return nullptr;
+  if (TooLargeOrNoInlineSummary)
+    return std::make_pair(nullptr, TooLargeOrNoInlineSummary);
+  return std::make_pair(nullptr, nullptr);
 }
 
 namespace {
@@ -402,13 +408,18 @@ protected:
       IsPrevailing;
   const ModuleSummaryIndex &Index;
   DenseMap<StringRef, FunctionImporter::ExportSetTy> *const ExportLists;
+  DenseMap<StringRef, FunctionImporter::ExportSetTy>
+      *const ExportDeclarationLists;
 
   ModuleImportsManager(
       function_ref<bool(GlobalValue::GUID, const GlobalValueSummary *)>
           IsPrevailing,
       const ModuleSummaryIndex &Index,
-      DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists = nullptr)
-      : IsPrevailing(IsPrevailing), Index(Index), ExportLists(ExportLists) {}
+      DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists = nullptr,
+      DenseMap<StringRef, FunctionImporter::ExportSetTy>
+          *ExportDeclarationLists = nullptr)
+      : IsPrevailing(IsPrevailing), Index(Index), ExportLists(ExportLists),
+        ExportDeclarationLists(ExportDeclarationLists) {}
 
 public:
   virtual ~ModuleImportsManager() = default;
@@ -421,12 +432,13 @@ public:
                          StringRef ModName,
                          FunctionImporter::ImportMapTy &ImportList);
 
-  static std::unique_ptr<ModuleImportsManager>
-  create(function_ref<bool(GlobalValue::GUID, const GlobalValueSummary *)>
-             IsPrevailing,
-         const ModuleSummaryIndex &Index,
-         DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists =
-             nullptr);
+  static std::unique_ptr<ModuleImportsManager> create(
+      function_ref<bool(GlobalValue::GUID, const GlobalValueSummary *)>
+          IsPrevailing,
+      const ModuleSummaryIndex &Index,
+      DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists = nullptr,
+      DenseMap<StringRef, FunctionImporter::ExportSetTy>
+          *ExportDeclarationLists = nullptr);
 };
 
 /// A ModuleImportsManager that operates based on a workload definition (see
@@ -554,7 +566,7 @@ public:
           IsPrevailing,
       const ModuleSummaryIndex &Index,
       DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists)
-      : ModuleImportsManager(IsPrevailing, Index, ExportLists) {
+      : ModuleImportsManager(IsPrevailing, Index, ExportLists, nullptr) {
     // Since the workload def uses names, we need a quick lookup
     // name->ValueInfo.
     StringMap<ValueInfo> NameToValueInfo;
@@ -640,11 +652,13 @@ std::unique_ptr<ModuleImportsManager> ModuleImportsManager::create(
     function_ref<bool(GlobalValue::GUID, const GlobalValueSummary *)>
         IsPrevailing,
     const ModuleSummaryIndex &Index,
-    DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists) {
+    DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists,
+    DenseMap<StringRef, FunctionImporter::ExportSetTy>
+        *ExportDeclarationLists) {
   if (WorkloadDefinitions.empty()) {
     LLVM_DEBUG(dbgs() << "[Workload] Using the regular imports manager.\n");
-    return std::unique_ptr<ModuleImportsManager>(
-        new ModuleImportsManager(IsPrevailing, Index, ExportLists));
+    return std::unique_ptr<ModuleImportsManager>(new ModuleImportsManager(
+        IsPrevailing, Index, ExportLists, ExportDeclarationLists));
   }
   LLVM_DEBUG(dbgs() << "[Workload] Using the contextual imports manager.\n");
   return std::make_unique<WorkloadImportsManager>(IsPrevailing, Index,
@@ -685,6 +699,7 @@ static void computeImportForFunction(
     SmallVectorImpl<EdgeInfo> &Worklist, GlobalsImporter &GVImporter,
     FunctionImporter::ImportMapTy &ImportList,
     DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists,
+    DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportDeclarationLists,
     FunctionImporter::ImportThresholdsTy &ImportThresholds) {
   GVImporter.onImportingSummary(Summary);
   static int ImportCount = 0;
@@ -764,7 +779,8 @@ static void computeImportForFunction(
       }
 
       FunctionImporter::ImportFailureReason Reason{};
-      CalleeSummary = selectCallee(Index, VI.getSummaryList(), NewThreshold,
+      GlobalValueSummary DeclarationCalleeSummary = false;
+      std::tie(CalleeSummary, DeclarationCalleeSummary) = selectCallee(Index, VI.getSummaryList(), NewThreshold,
                                    Summary.modulePath(), Reason);
       if (!CalleeSummary) {
         // Update with new larger threshold if this was a retry (otherwise
@@ -786,6 +802,11 @@ static void computeImportForFunction(
           FailureInfo = std::make_unique<FunctionImporter::ImportFailureInfo>(
               VI, Edge.second.getHotness(), Reason, 1);
         }
+
+        if (DeclarationCalleeSummary) {
+          ExportDeclarationList[DeclarationCalleeSummary->modulePath()].insert(VI.getGUID());
+        }
+  
         if (ForceImportAll) {
           std::string Msg = std::string("Failed to import function ") +
                             VI.name().str() + " due to " +
@@ -878,7 +899,8 @@ void ModuleImportsManager::computeImportForModule(
     LLVM_DEBUG(dbgs() << "Initialize import for " << VI << "\n");
     computeImportForFunction(*FuncSummary, Index, ImportInstrLimit,
                              DefinedGVSummaries, IsPrevailing, Worklist, GVI,
-                             ImportList, ExportLists, ImportThresholds);
+                             ImportList, ExportLists, ExportDeclarationLists,
+                             ImportThresholds);
   }
 
   // Process the newly imported functions and add callees to the worklist.
@@ -890,7 +912,8 @@ void ModuleImportsManager::computeImportForModule(
     if (auto *FS = dyn_cast<FunctionSummary>(Summary))
       computeImportForFunction(*FS, Index, Threshold, DefinedGVSummaries,
                                IsPrevailing, Worklist, GVI, ImportList,
-                               ExportLists, ImportThresholds);
+                               ExportLists, ExportDeclarationLists,
+                               ImportThresholds);
   }
 
   // Print stats about functions considered but rejected for importing
@@ -991,7 +1014,9 @@ void llvm::ComputeCrossModuleImport(
         isPrevailing,
     DenseMap<StringRef, FunctionImporter::ImportMapTy> &ImportLists,
     DenseMap<StringRef, FunctionImporter::ExportSetTy> &ExportLists) {
+  DenseMap<StringRef, FunctionImporter::ExportSetTy> ExportDeclarationLists;
   auto MIS = ModuleImportsManager::create(isPrevailing, Index, &ExportLists);
+
   // For each module that has function defined, compute the import/export lists.
   for (const auto &DefinedGVSummaries : ModuleToDefinedGVSummaries) {
     auto &ImportList = ImportLists[DefinedGVSummaries.first];
