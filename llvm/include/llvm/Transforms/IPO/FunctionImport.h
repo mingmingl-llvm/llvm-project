@@ -31,9 +31,23 @@ class Module;
 /// based on the provided summary informations.
 class FunctionImporter {
 public:
+  struct ValueType {
+    // If false, indicates only declaration is needed.
+    bool Def = false;
+
+    ValueType():Def(false) {}
+
+    ValueType(bool InDef): Def(InDef) {}
+
+    void updateValueType(bool InDef) {
+      if (Def)
+        return;
+      Def = InDef;
+    }
+  };
   /// Set of functions to import from a source module. Each entry is a set
   /// containing all the GUIDs of all functions to import for a source module.
-  using FunctionsToImportTy = std::unordered_set<GlobalValue::GUID>;
+  using FunctionsToImportTy = std::unordered_map<GlobalValue::GUID, ValueType>;
 
   /// The different reasons selectCallee will chose not to import a
   /// candidate.
@@ -100,7 +114,7 @@ public:
   using ImportMapTy = DenseMap<StringRef, FunctionsToImportTy>;
 
   /// The set contains an entry for every global value the module exports.
-  using ExportSetTy = DenseSet<ValueInfo>;
+  using ExportSetTy = DenseMap<ValueInfo, ValueType>;
 
   /// A function of this type is used to load modules referenced by the index.
   using ModuleLoaderTy =
@@ -113,8 +127,8 @@ public:
         ClearDSOLocalOnDeclarations(ClearDSOLocalOnDeclarations) {}
 
   /// Import functions in Module \p M based on the supplied import list.
-  Expected<bool> importFunctions(Module &M, const ImportMapTy &ImportList,
-                                 const ImportMapTy &ImportDecList);
+  Expected<bool> importFunctions(Module &M, const ImportMapTy &ImportList
+                                 );
 
 private:
   /// The summaries index used to trigger importing.
@@ -161,7 +175,7 @@ void ComputeCrossModuleImport(
     function_ref<bool(GlobalValue::GUID, const GlobalValueSummary *)>
         isPrevailing,
     DenseMap<StringRef, FunctionImporter::ImportMapTy> &ImportLists,
-    DenseMap<StringRef, FunctionImporter::ExportSetTy> &ExportLists);
+    DenseMap<StringRef, FunctionImporter::ExportSetTy> &ExportLicsts);
 
 /// PrevailingType enum used as a return type of callback passed
 /// to computeDeadSymbolsAndUpdateIndirectCalls. Yes and No values used when

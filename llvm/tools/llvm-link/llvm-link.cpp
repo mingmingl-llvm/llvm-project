@@ -321,7 +321,6 @@ static bool importFunctions(const char *argv0, Module &DestModule) {
 
   // Map of Module -> List of globals to import from the Module
   FunctionImporter::ImportMapTy ImportList;
-  FunctionImporter::ImportMapTy ImportDecList;
 
   auto ModuleLoader = [&DestModule](const char *argv0,
                                     const std::string &Identifier) {
@@ -375,14 +374,15 @@ static bool importFunctions(const char *argv0, Module &DestModule) {
 
     auto &Entry =
         ImportList[FileNameStringCache.insert(FileName).first->getKey()];
-    Entry.insert(F->getGUID());
+    // FIXME: Support import declarations later.
+    Entry[F->getGUID()].updateValueType(true);
   }
   auto CachedModuleLoader = [&](StringRef Identifier) {
     return ModuleLoaderCache.takeModule(std::string(Identifier));
   };
   FunctionImporter Importer(*Index, CachedModuleLoader,
                             /*ClearDSOLocalOnDeclarations=*/false);
-  ExitOnErr(Importer.importFunctions(DestModule, ImportList, ImportDecList));
+  ExitOnErr(Importer.importFunctions(DestModule, ImportList));
 
   return true;
 }

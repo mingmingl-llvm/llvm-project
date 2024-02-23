@@ -659,9 +659,8 @@ Error lto::thinBackend(const Config &Conf, unsigned Task, AddStreamFn AddStream,
 
   FunctionImporter Importer(CombinedIndex, ModuleLoader,
                             ClearDSOLocalOnDeclarations);
-  FunctionImporter::ImportMapTy ImportDecList;
   if (Error Err =
-          Importer.importFunctions(Mod, ImportList, ImportDecList).takeError())
+          Importer.importFunctions(Mod, ImportList).takeError())
     return Err;
 
   // Do this after any importing so that imported code is updated.
@@ -720,7 +719,10 @@ bool lto::initImportList(const Module &M,
       if (Summary->modulePath() == M.getModuleIdentifier())
         continue;
       // Add an entry to provoke importing by thinBackend.
-      ImportList[Summary->modulePath()].insert(GUID);
+      if (Summary->flags().ImportAsDec)
+        ImportList[Summary->modulePath()][GUID].updateValueType(false);
+      else
+        ImportList[Summary->modulePath()][GUID].updateValueType(true);
     }
   }
   return true;
