@@ -18,6 +18,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -480,10 +481,10 @@ public:
     explicit GVFlags(GlobalValue::LinkageTypes Linkage,
                      GlobalValue::VisibilityTypes Visibility,
                      bool NotEligibleToImport, bool Live, bool IsLocal,
-                     bool CanAutoHide)
+                     bool CanAutoHide, bool ImportAsDec = false)
         : Linkage(Linkage), Visibility(Visibility),
           NotEligibleToImport(NotEligibleToImport), Live(Live),
-          DSOLocal(IsLocal), CanAutoHide(CanAutoHide), ImportAsDec(0) {}
+          DSOLocal(IsLocal), CanAutoHide(CanAutoHide), ImportAsDec(ImportAsDec) {}
   };
 
 private:
@@ -567,6 +568,8 @@ public:
   void setCanAutoHide(bool CanAutoHide) { Flags.CanAutoHide = CanAutoHide; }
 
   bool canAutoHide() const { return Flags.CanAutoHide; }
+
+  bool shouldImportAsDec() const { return Flags.ImportAsDec; }
 
   GlobalValue::VisibilityTypes getVisibility() const {
     return (GlobalValue::VisibilityTypes)Flags.Visibility;
@@ -1252,6 +1255,9 @@ using ModulePathStringTableTy = StringMap<ModuleHash>;
 /// Map of global value GUID to its summary, used to identify values defined in
 /// a particular module, and provide efficient access to their summary.
 using GVSummaryMapTy = DenseMap<GlobalValue::GUID, GlobalValueSummary *>;
+
+/// A set of pointers for global value summaries.
+using GVSummaryPtrSet = SmallPtrSet<GlobalValueSummary*, 4>;
 
 /// Map of a type GUID to type id string and summary (multimap used
 /// in case of GUID conflicts).
