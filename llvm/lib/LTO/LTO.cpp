@@ -159,7 +159,7 @@ void llvm::computeLTOCacheKey(
   std::vector<uint64_t> ExportsGUID;
   ExportsGUID.reserve(ExportList.size());
   for (const auto &VI_Type : ExportList) {
-    const auto& VI = VI_Type.first;
+    const auto &VI = VI_Type.first;
     auto GUID = VI.getGUID();
     ExportsGUID.push_back(GUID);
   }

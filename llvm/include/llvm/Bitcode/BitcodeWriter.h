@@ -103,7 +103,8 @@ class raw_ostream;
     void writeIndex(
         const ModuleSummaryIndex *Index,
         const std::map<std::string, GVSummaryMapTy> *ModuleToSummariesForIndex,
-        const std::map<std::string, GVSummaryPtrSet>* ModuleToDeclarationSummaries);
+        const std::map<std::string, GVSummaryPtrSet>
+            *ModuleToDeclarationSummaries);
   };
 
   /// Write the specified module to the specified raw output stream.

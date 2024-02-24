@@ -460,10 +460,12 @@ static void computeFunctionSummary(
 
         auto IndirectCalleeTargets = getValueProfDataFromInst(
             I, IPVK_IndirectCallTarget, 24, NumVals, TotalCount);
-        
+
         if (IndirectCalleeTargets.get()) {
           for (uint32_t J = 0; J < NumVals; J++) {
-            CallGraphEdges[Index.getOrInsertValueInfo(IndirectCalleeTargets[J].Value)].updateHotness(getHotness(IndirectCalleeTargets[J].Count, PSI));
+            CallGraphEdges[Index.getOrInsertValueInfo(
+                               IndirectCalleeTargets[J].Value)]
+                .updateHotness(getHotness(IndirectCalleeTargets[J].Count, PSI));
           }
         }
       }

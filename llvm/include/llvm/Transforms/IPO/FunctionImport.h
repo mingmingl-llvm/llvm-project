@@ -35,9 +35,9 @@ public:
     // If false, indicates only declaration is needed.
     bool Def = false;
 
-    ValueType():Def(false) {}
+    ValueType() : Def(false) {}
 
-    ValueType(bool InDef): Def(InDef) {}
+    ValueType(bool InDef) : Def(InDef) {}
 
     void updateValueType(bool InDef) {
       if (Def)
@@ -127,8 +127,7 @@ public:
         ClearDSOLocalOnDeclarations(ClearDSOLocalOnDeclarations) {}
 
   /// Import functions in Module \p M based on the supplied import list.
-  Expected<bool> importFunctions(Module &M, const ImportMapTy &ImportList
-                                 );
+  Expected<bool> importFunctions(Module &M, const ImportMapTy &ImportList);
 
 private:
   /// The summaries index used to trigger importing.
@@ -227,7 +226,7 @@ void gatherImportedSummariesForModule(
     const DenseMap<StringRef, GVSummaryMapTy> &ModuleToDefinedGVSummaries,
     const FunctionImporter::ImportMapTy &ImportList,
     std::map<std::string, GVSummaryMapTy> &ModuleToSummariesForIndex,
-    std::map<std::string, GVSummaryPtrSet>& ModuleToDeclarationSummaries);
+    std::map<std::string, GVSummaryPtrSet> &ModuleToDeclarationSummaries);
 
 /// Emit into \p OutputFilename the files module \p ModulePath will import from.
 std::error_code EmitImportsFiles(

@@ -84,6 +84,11 @@ static cl::opt<bool>
     ForceImportAll("force-import-all", cl::init(false), cl::Hidden,
                    cl::desc("Import functions with noinline attribute"));
 
+static cl::opt<bool> ImportDeclaration(
+    "import-declaration", cl::init(false), cl::Hidden,
+    cl::desc("if true, import function declaration as fallback if the function "
+             "is noinline or exceeds instruction size limit"));
+
 static cl::opt<float>
     ImportInstrFactor("import-instr-evolution-factor", cl::init(0.7),
                       cl::Hidden, cl::value_desc("x"),
@@ -250,7 +255,7 @@ static auto qualifyCalleeCandidates(
 ///   number of source modules parsed/linked.
 /// - One that has PGO data attached.
 /// - [insert you fancy metric here]
-static std::pair<const GlobalValueSummary *, const GlobalValueSummary* >
+static std::pair<const GlobalValueSummary *, const GlobalValueSummary *>
 selectCallee(const ModuleSummaryIndex &Index,
              ArrayRef<std::unique_ptr<GlobalValueSummary>> CalleeSummaryList,
              unsigned Threshold, StringRef CallerModulePath,
@@ -279,10 +284,12 @@ selectCallee(const ModuleSummaryIndex &Index,
       Reason = FunctionImporter::ImportFailureReason::NoInline;
       continue;
     }
+    if (!ImportDeclaration)
+      TooLargeOrNoInlineSummary = nullptr;
 
     return std::make_pair(Summary, TooLargeOrNoInlineSummary);
   }
-  if (TooLargeOrNoInlineSummary)
+  if (ImportDeclaration && TooLargeOrNoInlineSummary)
     return std::make_pair(nullptr, TooLargeOrNoInlineSummary);
   return std::make_pair(nullptr, nullptr);
 }
@@ -359,10 +366,10 @@ class GlobalsImporter final {
         if (!GVS || !Index.canImportGlobalVar(GVS, /* AnalyzeRefs */ true) ||
             LocalNotInModule(GVS))
           continue;
-        auto& RefModuleImportList = ImportList[RefSummary->modulePath()];
-        
-        auto IterAndInserted = RefModuleImportList.insert(std::make_pair(VI.getGUID(), FunctionImporter::ValueType(true)));
-  
+
+        auto IterAndInserted = ImportList[RefSummary->modulePath()].insert(
+            std::make_pair(VI.getGUID(), FunctionImporter::ValueType(true)));
+
         // Only update stat and exports if we haven't already imported this
         // variable.
         if (!IterAndInserted.second) {
@@ -414,18 +421,13 @@ protected:
       IsPrevailing;
   const ModuleSummaryIndex &Index;
   DenseMap<StringRef, FunctionImporter::ExportSetTy> *const ExportLists;
-  DenseMap<StringRef, FunctionImporter::ExportSetTy>
-      *const ExportDeclarationLists;
 
   ModuleImportsManager(
       function_ref<bool(GlobalValue::GUID, const GlobalValueSummary *)>
           IsPrevailing,
       const ModuleSummaryIndex &Index,
-      DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists = nullptr,
-      DenseMap<StringRef, FunctionImporter::ExportSetTy>
-          *ExportDeclarationLists = nullptr)
-      : IsPrevailing(IsPrevailing), Index(Index), ExportLists(ExportLists),
-        ExportDeclarationLists(ExportDeclarationLists) {}
+      DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists = nullptr)
+      : IsPrevailing(IsPrevailing), Index(Index), ExportLists(ExportLists) {}
 
 public:
   virtual ~ModuleImportsManager() = default;
@@ -438,13 +440,12 @@ public:
                          StringRef ModName,
                          FunctionImporter::ImportMapTy &ImportList);
 
-  static std::unique_ptr<ModuleImportsManager> create(
-      function_ref<bool(GlobalValue::GUID, const GlobalValueSummary *)>
-          IsPrevailing,
-      const ModuleSummaryIndex &Index,
-      DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists = nullptr,
-      DenseMap<StringRef, FunctionImporter::ExportSetTy>
-          *ExportDeclarationLists = nullptr);
+  static std::unique_ptr<ModuleImportsManager>
+  create(function_ref<bool(GlobalValue::GUID, const GlobalValueSummary *)>
+             IsPrevailing,
+         const ModuleSummaryIndex &Index,
+         DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists =
+             nullptr);
 };
 
 /// A ModuleImportsManager that operates based on a workload definition (see
@@ -572,7 +573,7 @@ public:
           IsPrevailing,
       const ModuleSummaryIndex &Index,
       DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists)
-      : ModuleImportsManager(IsPrevailing, Index, ExportLists, nullptr) {
+      : ModuleImportsManager(IsPrevailing, Index, ExportLists) {
     // Since the workload def uses names, we need a quick lookup
     // name->ValueInfo.
     StringMap<ValueInfo> NameToValueInfo;
@@ -658,13 +659,11 @@ std::unique_ptr<ModuleImportsManager> ModuleImportsManager::create(
     function_ref<bool(GlobalValue::GUID, const GlobalValueSummary *)>
         IsPrevailing,
     const ModuleSummaryIndex &Index,
-    DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists,
-    DenseMap<StringRef, FunctionImporter::ExportSetTy>
-        *ExportDeclarationLists) {
+    DenseMap<StringRef, FunctionImporter::ExportSetTy> *ExportLists) {
   if (WorkloadDefinitions.empty()) {
     LLVM_DEBUG(dbgs() << "[Workload] Using the regular imports manager.\n");
-    return std::unique_ptr<ModuleImportsManager>(new ModuleImportsManager(
-        IsPrevailing, Index, ExportLists, ExportDeclarationLists));
+    return std::unique_ptr<ModuleImportsManager>(
+        new ModuleImportsManager(IsPrevailing, Index, ExportLists));
   }
   LLVM_DEBUG(dbgs() << "[Workload] Using the contextual imports manager.\n");
   return std::make_unique<WorkloadImportsManager>(IsPrevailing, Index,
@@ -784,9 +783,10 @@ static void computeImportForFunction(
       }
 
       FunctionImporter::ImportFailureReason Reason{};
-      const GlobalValueSummary* DeclarationCalleeSummary = nullptr;
-      std::tie(CalleeSummary, DeclarationCalleeSummary) = selectCallee(Index, VI.getSummaryList(), NewThreshold,
-                                   Summary.modulePath(), Reason);
+      const GlobalValueSummary *DeclarationCalleeSummary = nullptr;
+      std::tie(CalleeSummary, DeclarationCalleeSummary) =
+          selectCallee(Index, VI.getSummaryList(), NewThreshold,
+                       Summary.modulePath(), Reason);
       if (!CalleeSummary) {
         // Update with new larger threshold if this was a retry (otherwise
         // we would have already inserted with NewThreshold above). Also
@@ -809,11 +809,13 @@ static void computeImportForFunction(
         }
 
         if (DeclarationCalleeSummary) {
-          StringRef DeclarationSourceModule = DeclarationCalleeSummary->modulePath();
+          StringRef DeclarationSourceModule =
+              DeclarationCalleeSummary->modulePath();
           (*ExportLists)[DeclarationSourceModule][VI].updateValueType(false);
-          ImportList[DeclarationSourceModule][VI.getGUID()].updateValueType(false);
+          ImportList[DeclarationSourceModule][VI.getGUID()].updateValueType(
+              false);
         }
-  
+
         if (ForceImportAll) {
           std::string Msg = std::string("Failed to import function ") +
                             VI.name().str() + " due to " +
@@ -839,11 +841,13 @@ static void computeImportForFunction(
              "selectCallee() didn't honor the threshold");
 
       auto ExportModulePath = ResolvedCalleeSummary->modulePath();
-      auto ImportListIterAndInsert = ImportList[ExportModulePath].insert(std::make_pair(VI.getGUID(), FunctionImporter::ValueType(true)));
-      
-      //auto ILI = ImportList[ExportModulePath][VI.getGUID()].updateValueType(true);
-      // We previously decided to import this GUID definition if it was already
-      // inserted in the set of imports from the exporting module.
+      auto ImportListIterAndInsert = ImportList[ExportModulePath].insert(
+          std::make_pair(VI.getGUID(), FunctionImporter::ValueType(true)));
+
+      // auto ILI =
+      // ImportList[ExportModulePath][VI.getGUID()].updateValueType(true);
+      //  We previously decided to import this GUID definition if it was already
+      //  inserted in the set of imports from the exporting module.
       bool PreviouslyImported = !ImportListIterAndInsert.second;
       if (!PreviouslyImported) {
         NumImportedFunctionsThinLink++;
@@ -910,8 +914,7 @@ void ModuleImportsManager::computeImportForModule(
     LLVM_DEBUG(dbgs() << "Initialize import for " << VI << "\n");
     computeImportForFunction(*FuncSummary, Index, ImportInstrLimit,
                              DefinedGVSummaries, IsPrevailing, Worklist, GVI,
-                             ImportList, ExportLists,
-                             ImportThresholds);
+                             ImportList, ExportLists, ImportThresholds);
   }
 
   // Process the newly imported functions and add callees to the worklist.
@@ -923,8 +926,7 @@ void ModuleImportsManager::computeImportForModule(
     if (auto *FS = dyn_cast<FunctionSummary>(Summary))
       computeImportForFunction(*FS, Index, Threshold, DefinedGVSummaries,
                                IsPrevailing, Worklist, GVI, ImportList,
-                               ExportLists, 
-                               ImportThresholds);
+                               ExportLists, ImportThresholds);
   }
 
   // Print stats about functions considered but rejected for importing
@@ -988,7 +990,7 @@ static bool checkVariableImport(
 
   for (auto &ImportPerModule : ImportLists)
     for (auto &ExportPerModule : ImportPerModule.second) {
-      for (auto& [GUID, VT] : ExportPerModule.second)
+      for (auto &[GUID, VT] : ExportPerModule.second)
         FlattenedImports.insert(GUID);
     }
 
@@ -1050,7 +1052,7 @@ void llvm::ComputeCrossModuleImport(
       if (!EI.second.Def) {
         continue;
       }
-      auto& EVI = EI.first;
+      auto &EVI = EI.first;
       // Find the copy defined in the exporting module so that we can mark the
       // values it references in that specific definition as exported.
       // Below we will add all references and called values, without regard to
@@ -1146,8 +1148,7 @@ static void ComputeCrossModuleImportForModuleForTest(
     function_ref<bool(GlobalValue::GUID, const GlobalValueSummary *)>
         isPrevailing,
     const ModuleSummaryIndex &Index,
-    FunctionImporter::ImportMapTy &ImportList
-    ) {
+    FunctionImporter::ImportMapTy &ImportList) {
   // Collect the list of functions this module defines.
   // GUID -> Summary
   GVSummaryMapTy FunctionSummaryMap;
@@ -1373,14 +1374,16 @@ void llvm::gatherImportedSummariesForModule(
     const DenseMap<StringRef, GVSummaryMapTy> &ModuleToDefinedGVSummaries,
     const FunctionImporter::ImportMapTy &ImportList,
     std::map<std::string, GVSummaryMapTy> &ModuleToSummariesForIndex,
-    std::map<std::string, GVSummaryPtrSet>& ModuleToDeclarationSummariesForIndex) {
+    std::map<std::string, GVSummaryPtrSet>
+        &ModuleToDeclarationSummariesForIndex) {
   // Include all summaries from the importing module.
   ModuleToSummariesForIndex[std::string(ModulePath)] =
       ModuleToDefinedGVSummaries.lookup(ModulePath);
   // Include summaries for imports.
   for (const auto &ILI : ImportList) {
     auto &SummariesForIndex = ModuleToSummariesForIndex[std::string(ILI.first)];
-    auto &DeclarationSummarySet = ModuleToDeclarationSummariesForIndex[std::string(ILI.first)];
+    auto &DeclarationSummarySet =
+        ModuleToDeclarationSummariesForIndex[std::string(ILI.first)];
     const auto &DefinedGVSummaries =
         ModuleToDefinedGVSummaries.lookup(ILI.first);
     for (const auto &GI : ILI.second) {
@@ -1652,8 +1655,7 @@ static void internalizeGVsAfterImport(Module &M) {
 // Automatically import functions in Module \p DestModule based on the summaries
 // index.
 Expected<bool> FunctionImporter::importFunctions(
-    Module &DestModule, const FunctionImporter::ImportMapTy &ImportList
-    ) {
+    Module &DestModule, const FunctionImporter::ImportMapTy &ImportList) {
   LLVM_DEBUG(dbgs() << "Starting import for Module "
                     << DestModule.getModuleIdentifier() << "\n");
   unsigned ImportedCount = 0, ImportedGVCount = 0;
@@ -1665,29 +1667,29 @@ Expected<bool> FunctionImporter::importFunctions(
     ModuleNameOrderedList.insert(FunctionsToImportPerModule.first);
   }
 
-
   auto getFunctionsToImport =
       [](const FunctionImporter::FunctionsToImportTy &Import,
-         std::unordered_set<GlobalValue::GUID>& DefGUIDSet,
-         std::unordered_set<GlobalValue::GUID>& DecGUIDSet) {
-    DefGUIDSet.clear();
-    DecGUIDSet.clear();
-    for (const auto& [GUID, ValueType] : Import) {
-      if (ValueType.Def)
-        DefGUIDSet.insert(GUID);
-      else
-        DecGUIDSet.insert(GUID);
-    }
-  };
+         std::unordered_set<GlobalValue::GUID> &DefGUIDSet,
+         std::unordered_set<GlobalValue::GUID> &DecGUIDSet) {
+        DefGUIDSet.clear();
+        DecGUIDSet.clear();
+        for (const auto &[GUID, ValueType] : Import) {
+          if (ValueType.Def)
+            DefGUIDSet.insert(GUID);
+          else
+            DecGUIDSet.insert(GUID);
+        }
+      };
 
   std::unordered_set<GlobalValue::GUID> ImportGUIDs;
   std::unordered_set<GlobalValue::GUID> DecGUIDSet;
   for (const auto &Name : ModuleNameOrderedList) {
     // Get the module for the import
-    const auto& FunctionsToImportPerModule = ImportList.find(Name);
+    const auto &FunctionsToImportPerModule = ImportList.find(Name);
     assert(FunctionsToImportPerModule != ImportList.end());
 
-    getFunctionsToImport(FunctionsToImportPerModule->second, ImportGUIDs, DecGUIDSet);
+    getFunctionsToImport(FunctionsToImportPerModule->second, ImportGUIDs,
+                         DecGUIDSet);
 
     Expected<std::unique_ptr<Module>> SrcModuleOrErr = ModuleLoader(Name);
     if (!SrcModuleOrErr)
@@ -1730,8 +1732,8 @@ Expected<bool> FunctionImporter::importFunctions(
 
       // If definition is not imported, try declaration.
       auto ImportDec = DecGUIDSet.count(GUID);
-      // FIXME: Ensure/validate F.materialize is not required to import declarations with
-      // attributes.
+      // FIXME: Ensure/validate F.materialize is not required to import
+      // declarations with attributes.
       if (ImportDec) {
         GlobalsToImport.insert(&F);
         GlobalDecsToImport.insert(&F);
@@ -1850,11 +1852,11 @@ static bool doImportingForModuleForTest(
   // when testing distributed backend handling via the opt tool, when
   // we have distributed indexes containing exactly the summaries to import.
   if (ImportAllIndex)
-    ComputeCrossModuleImportForModuleFromIndexForTest(
-        M.getModuleIdentifier(), *Index, ImportList);
+    ComputeCrossModuleImportForModuleFromIndexForTest(M.getModuleIdentifier(),
+                                                      *Index, ImportList);
   else
-    ComputeCrossModuleImportForModuleForTest(
-        M.getModuleIdentifier(), isPrevailing, *Index, ImportList);
+    ComputeCrossModuleImportForModuleForTest(M.getModuleIdentifier(),
+                                             isPrevailing, *Index, ImportList);
 
   // Conservatively mark all internal values as promoted. This interface is
   // only used when doing importing via the function importing pass. The pass
@@ -1881,8 +1883,7 @@ static bool doImportingForModuleForTest(
   };
   FunctionImporter Importer(*Index, ModuleLoader,
                             /*ClearDSOLocalOnDeclarations=*/false);
-  Expected<bool> Result =
-      Importer.importFunctions(M, ImportList);
+  Expected<bool> Result = Importer.importFunctions(M, ImportList);
 
   // FIXME: Probably need to propagate Errors through the pass manager.
   if (!Result) {

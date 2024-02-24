@@ -659,8 +659,7 @@ Error lto::thinBackend(const Config &Conf, unsigned Task, AddStreamFn AddStream,
 
   FunctionImporter Importer(CombinedIndex, ModuleLoader,
                             ClearDSOLocalOnDeclarations);
-  if (Error Err =
-          Importer.importFunctions(Mod, ImportList).takeError())
+  if (Error Err = Importer.importFunctions(Mod, ImportList).takeError())
     return Err;
 
   // Do this after any importing so that imported code is updated.

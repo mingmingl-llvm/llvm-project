@@ -484,7 +484,8 @@ public:
                      bool CanAutoHide, bool ImportAsDec = false)
         : Linkage(Linkage), Visibility(Visibility),
           NotEligibleToImport(NotEligibleToImport), Live(Live),
-          DSOLocal(IsLocal), CanAutoHide(CanAutoHide), ImportAsDec(ImportAsDec) {}
+          DSOLocal(IsLocal), CanAutoHide(CanAutoHide),
+          ImportAsDec(ImportAsDec) {}
   };
 
 private:
@@ -1257,7 +1258,7 @@ using ModulePathStringTableTy = StringMap<ModuleHash>;
 using GVSummaryMapTy = DenseMap<GlobalValue::GUID, GlobalValueSummary *>;
 
 /// A set of pointers for global value summaries.
-using GVSummaryPtrSet = SmallPtrSet<GlobalValueSummary*, 4>;
+using GVSummaryPtrSet = SmallPtrSet<GlobalValueSummary *, 4>;
 
 /// Map of a type GUID to type id string and summary (multimap used
 /// in case of GUID conflicts).

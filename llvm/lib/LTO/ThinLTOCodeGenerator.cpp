@@ -223,8 +223,7 @@ crossImportIntoModule(Module &TheModule, const ModuleSummaryIndex &Index,
   };
 
   FunctionImporter Importer(Index, Loader, ClearDSOLocalOnDeclarations);
-  Expected<bool> Result =
-      Importer.importFunctions(TheModule, ImportList);
+  Expected<bool> Result = Importer.importFunctions(TheModule, ImportList);
   if (!Result) {
     handleAllErrors(Result.takeError(), [&](ErrorInfoBase &EIB) {
       SMDiagnostic Err = SMDiagnostic(TheModule.getModuleIdentifier(),
@@ -804,9 +803,11 @@ void ThinLTOCodeGenerator::gatherImportedSummariesForModule(
                            IsPrevailing(PrevailingCopy), ImportLists,
                            ExportLists);
 
+  std::map<std::string, GVSummaryPtrSet> ModuleToDeclarationSummaries;
   llvm::gatherImportedSummariesForModule(
       ModuleIdentifier, ModuleToDefinedGVSummaries,
-      ImportLists[ModuleIdentifier], ModuleToSummariesForIndex);
+      ImportLists[ModuleIdentifier], ModuleToSummariesForIndex,
+      ModuleToDeclarationSummaries);
 }
 
 /**
@@ -843,9 +844,11 @@ void ThinLTOCodeGenerator::emitImports(Module &TheModule, StringRef OutputName,
                            ExportLists);
 
   std::map<std::string, GVSummaryMapTy> ModuleToSummariesForIndex;
+  std::map<std::string, GVSummaryPtrSet> ModuleToDeclarationSummaries;
   llvm::gatherImportedSummariesForModule(
       ModuleIdentifier, ModuleToDefinedGVSummaries,
-      ImportLists[ModuleIdentifier], ModuleToSummariesForIndex);
+      ImportLists[ModuleIdentifier], ModuleToSummariesForIndex,
+      ModuleToDeclarationSummaries);
 
   std::error_code EC;
   if ((EC = EmitImportsFiles(ModuleIdentifier, OutputName,
