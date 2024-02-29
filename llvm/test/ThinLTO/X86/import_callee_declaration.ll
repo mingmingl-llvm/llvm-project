@@ -30,7 +30,8 @@
 ; CHECK: }
 
 ; Test that large_indirect_callee is imported as a declaration
-; CHECK: declare void @large_indirect_callee()
+; CHECK: declare void @large_indirect_callee() #1
+; CHECK: attributes #1 = { norecurse }
 
 ;--- main.ll
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
@@ -58,7 +59,7 @@ define void @callee() #1 {
   ret void
 }
 
-define void @large_indirect_callee() {
+define void @large_indirect_callee()#2 {
   call void @callee()
   call void @callee()
   call void @callee()
@@ -94,6 +95,8 @@ entry:
 attributes #0 = { nounwind norecurse }
 
 attributes #1 = { noinline }
+
+attributes #2 = { norecurse }
 
 !0 = !{!"VP", i32 0, i64 1, i64 14343440786664691134, i64 1}
 !1 = !{!"VP", i32 0, i64 2, i64 13568239288960714650, i64 1}
