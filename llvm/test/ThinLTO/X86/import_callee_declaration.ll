@@ -3,7 +3,20 @@
 ; RUN: opt -module-summary main.ll -o main.bc
 
 ; RUN: opt -module-summary lib.ll -o lib.bc
-; RUN: llvm-lto -thinlto -o summary main.bc lib.bc
+
+; Generate the combined summary
+; RUN: llvm-lto2 run \
+; RUN:   -import-instr-limit=6 \
+; RUN:   -import-declaration \
+; RUN:   -thinlto-distributed-indexes \
+; RUN:   -r=main.bc,main,px \
+; RUN:   -r=main.bc,small_func, \
+; RUN:   -r=main.bc,large_func, \
+; RUN:   -r=lib.bc,callee,px \
+; RUN:   -r=lib.bc,large_indirect_callee,px \
+; RUN:   -r=lib.bc,small_func,px \
+; RUN:   -r=lib.bc,large_func,px \
+; RUN:   -r=lib.bc,calleeAddrs,px -o summary main.bc lib.bc
 
 ; At this point, update ComputeImportForModule to compute the list of declared
 ; functions. And pass it onto bitcode summary.
@@ -30,11 +43,14 @@ source_filename = "lib.cc"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
-@calleeAddrs = global [2 x ptr] [ptr @large_indirect_callee, ptr @small_indirect_callee]
+@calleeAddrs = constant [2 x ptr] [ptr @large_indirect_callee, ptr @small_indirect_callee]
 
-declare void @callee()
+define void @callee() #1 {
+  ret void
+}
 
 define void @large_indirect_callee() {
+  call void @callee()
   call void @callee()
   call void @callee()
   call void @callee()
@@ -67,5 +83,7 @@ entry:
 }
 
 attributes #0 = { nounwind norecurse }
+
+attributes #1 = { noinline }
 
 ; CHECK-NOT: main

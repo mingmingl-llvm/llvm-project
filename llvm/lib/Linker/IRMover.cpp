@@ -1641,8 +1641,8 @@ Error IRLinker::run() {
 
   // FIXME: Prepend ProtosWorklist ahead of Worklist.
   while (!ProtosWorkList.empty()) {
-    GlobalValue *GV = Worklist.back();
-    Worklist.pop_back();
+    GlobalValue *GV = ProtosWorkList.back();
+    ProtosWorkList.pop_back();
     if (ValueMap.find(GV) != ValueMap.end() ||
         IndirectSymbolValueMap.find(GV) != IndirectSymbolValueMap.end())
       continue;

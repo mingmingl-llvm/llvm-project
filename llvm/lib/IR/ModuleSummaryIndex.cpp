@@ -15,6 +15,7 @@
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
@@ -351,6 +352,15 @@ bool ModuleSummaryIndex::canImportGlobalVar(const GlobalValueSummary *S,
   };
   auto *GVS = cast<GlobalVarSummary>(S->getBaseObject());
 
+  if (GlobalValue::isInterposableLinkage(S->linkage())) {
+    LLVM_DEBUG(dbgs() << "\t\tisInterposableLinkage\n");
+  }
+  if (S->notEligibleToImport()) {
+    LLVM_DEBUG(dbgs() << "\t\tnotEligibleToImport\n");
+  }
+  if (HasRefsPreventingImport(GVS)) {
+    LLVM_DEBUG(dbgs() << "\t\tHasRefsPreventingImport\n");
+  }
   // Global variable with non-trivial initializer can be imported
   // if it's readonly. This gives us extra opportunities for constant
   // folding and converting indirect calls to direct calls. We don't

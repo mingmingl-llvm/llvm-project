@@ -89,6 +89,11 @@ static cl::opt<bool> ImportDeclaration(
     cl::desc("if true, import function declaration as fallback if the function "
              "is noinline or exceeds instruction size limit"));
 
+// FIXME: This option is introduced to control the amount of prototyping only.
+// The upstream work shouldn't need this option.
+static cl::opt<bool> ImportDeclarationVerbosePrint("import-declaration-verbose-print", cl::init(false), cl::Hidden,
+    cl::desc("if true, the number of definitions and declarations will be printed separately."));
+
 static cl::opt<float>
     ImportInstrFactor("import-instr-evolution-factor", cl::init(0.7),
                       cl::Hidden, cl::value_desc("x"),
@@ -352,8 +357,12 @@ class GlobalsImporter final {
       // was not distinguishing path.
       auto LocalNotInModule =
           [&](const GlobalValueSummary *RefSummary) -> bool {
-        return GlobalValue::isLocalLinkage(RefSummary->linkage()) &&
-               RefSummary->modulePath() != Summary.modulePath();
+        if(GlobalValue::isLocalLinkage(RefSummary->linkage()) &&
+               RefSummary->modulePath() != Summary.modulePath()) {
+          LLVM_DEBUG(dbgs() << "\tignore " << VI.getGUID() << " from " << RefSummary->modulePath() << " since it's different from " << Summary.modulePath());
+          return true;
+        }
+        return false;
       };
 
       for (const auto &RefSummary : VI.getSummaryList()) {
@@ -364,8 +373,10 @@ class GlobalsImporter final {
         // based on profile information). Should we decide to handle them here,
         // we can refactor accordingly at that time.
         if (!GVS || !Index.canImportGlobalVar(GVS, /* AnalyzeRefs */ true) ||
-            LocalNotInModule(GVS))
+            LocalNotInModule(GVS)) {
+          LLVM_DEBUG(dbgs() << "Ref ignored and not imported " << VI << "\n");
           continue;
+        }
 
         auto IterAndInserted = ImportList[RefSummary->modulePath()].insert(
             std::make_pair(VI.getGUID(), FunctionImporter::ValueType(true)));
@@ -376,6 +387,8 @@ class GlobalsImporter final {
           IterAndInserted.first->second.updateValueType(true);
           break;
         }
+
+        assert(IterAndInserted.first->second.Def == true);
 
         NumImportedGlobalVarsThinLink++;
         // Any references made by this variable will be marked exported
@@ -809,6 +822,7 @@ static void computeImportForFunction(
         }
 
         if (DeclarationCalleeSummary) {
+          assert(dyn_cast<FunctionSummary>(DeclarationCalleeSummary));
           StringRef DeclarationSourceModule =
               DeclarationCalleeSummary->modulePath();
           (*ExportLists)[DeclarationSourceModule][VI].updateValueType(false);
@@ -848,8 +862,8 @@ static void computeImportForFunction(
       // ImportList[ExportModulePath][VI.getGUID()].updateValueType(true);
       //  We previously decided to import this GUID definition if it was already
       //  inserted in the set of imports from the exporting module.
-      bool PreviouslyImported = !ImportListIterAndInsert.second;
-      if (!PreviouslyImported) {
+      bool NewlyImportedGUID = ImportListIterAndInsert.second;
+      if (NewlyImportedGUID) {
         NumImportedFunctionsThinLink++;
         if (IsHotCallsite)
           NumImportedHotFunctionsThinLink++;
@@ -971,11 +985,25 @@ static bool isGlobalVarSummary(const ModuleSummaryIndex &Index,
 
 template <class T>
 static unsigned numGlobalVarSummaries(const ModuleSummaryIndex &Index,
-                                      T &Cont) {
+                                      T &Cont, unsigned& DefinedGVS, unsigned& DefinedFS) {
   unsigned NumGVS = 0;
-  for (auto &V : Cont)
-    if (isGlobalVarSummary(Index, V.first))
+  // Init caller-provided arguments.
+  DefinedGVS = 0;
+  DefinedFS = 0;
+  for (auto &V : Cont) {
+    if (isGlobalVarSummary(Index, V.first)) {
       ++NumGVS;
+      if (V.second.Def)
+        ++DefinedGVS;
+    } else {
+      // For the caller, if V is not a global value summary, it's regarded as a
+      // function summary.
+      if (V.second.Def) {
+        ++DefinedFS;
+      }
+    }
+
+  }
   return NumGVS;
 }
 #endif
@@ -1019,6 +1047,13 @@ static bool checkVariableImport(
   return true;
 }
 #endif
+
+
+void printDefAndDec(const unsigned NumDef, const unsigned NumDec) {
+    if (!ImportDeclarationVerbosePrint)
+      return;
+    LLVM_DEBUG(dbgs() << "(Def: " << NumDef << ", Dec: " << NumDec << ")\n");
+  }
 
 /// Compute all the import and export for every module using the Index.
 void llvm::ComputeCrossModuleImport(
@@ -1094,6 +1129,7 @@ void llvm::ComputeCrossModuleImport(
     ELI.second.insert(NewExports.begin(), NewExports.end());
   }
 
+
   assert(checkVariableImport(Index, ImportLists, ExportLists));
 #ifndef NDEBUG
   LLVM_DEBUG(dbgs() << "Import/Export lists for " << ImportLists.size()
@@ -1101,18 +1137,30 @@ void llvm::ComputeCrossModuleImport(
   for (auto &ModuleImports : ImportLists) {
     auto ModName = ModuleImports.first;
     auto &Exports = ExportLists[ModName];
-    unsigned NumGVS = numGlobalVarSummaries(Index, Exports);
+    unsigned DefinedGVS = 0;
+    unsigned DefinedFS = 0;
+    unsigned NumGVS = numGlobalVarSummaries(Index, Exports, DefinedGVS, DefinedFS);
     LLVM_DEBUG(dbgs() << "* Module " << ModName << " exports "
-                      << Exports.size() - NumGVS << " functions and " << NumGVS
-                      << " vars. Imports from " << ModuleImports.second.size()
+                      << Exports.size() - NumGVS << " functions ");
+    printDefAndDec(DefinedFS, Exports.size() - NumGVS - DefinedFS);
+    LLVM_DEBUG(dbgs() <<  ") and " << NumGVS
+                      << " vars ");
+    printDefAndDec(DefinedGVS, NumGVS - DefinedGVS);
+    LLVM_DEBUG(dbgs() << "). Imports from " << ModuleImports.second.size()
                       << " modules.\n");
     for (auto &Src : ModuleImports.second) {
       auto SrcModName = Src.first;
-      unsigned NumGVSPerMod = numGlobalVarSummaries(Index, Src.second);
+      unsigned ImportDefinedGVS = 0;
+      unsigned ImportDefinedFS = 0;
+      unsigned NumGVSPerMod = numGlobalVarSummaries(Index, Src.second, ImportDefinedGVS, ImportDefinedFS);
       LLVM_DEBUG(dbgs() << " - " << Src.second.size() - NumGVSPerMod
-                        << " functions imported from " << SrcModName << "\n");
+                        << " functions ");
+      printDefAndDec(ImportDefinedFS, Src.second.size() - NumGVSPerMod - ImportDefinedFS);
+      LLVM_DEBUG(dbgs() << " imported from " << SrcModName << "\n");
       LLVM_DEBUG(dbgs() << " - " << NumGVSPerMod
-                        << " global vars imported from " << SrcModName << "\n");
+                        << " global vars ");
+      printDefAndDec(ImportDefinedGVS, NumGVSPerMod - ImportDefinedGVS);
+      LLVM_DEBUG(dbgs() << " imported from " << SrcModName << "\n");
     }
   }
 #endif
@@ -1126,9 +1174,14 @@ static void dumpImportListForModule(const ModuleSummaryIndex &Index,
                     << ImportList.size() << " modules.\n");
   for (auto &Src : ImportList) {
     auto SrcModName = Src.first;
-    unsigned NumGVSPerMod = numGlobalVarSummaries(Index, Src.second);
+    unsigned DefinedGVS = 0;
+    unsigned DefinedFS = 0;
+    unsigned NumGVSPerMod = numGlobalVarSummaries(Index, Src.second, DefinedGVS, DefinedFS);
     LLVM_DEBUG(dbgs() << " - " << Src.second.size() - NumGVSPerMod
-                      << " functions imported from " << SrcModName << "\n");
+                      << " functions ");
+    printDefAndDec(DefinedFS, Src.second.size() - NumGVSPerMod - DefinedFS);
+    LLVM_DEBUG(dbgs() << "imported from " << SrcModName << "\n");
+    printDefAndDec(DefinedGVS, NumGVSPerMod - DefinedGVS);
     LLVM_DEBUG(dbgs() << " - " << NumGVSPerMod << " vars imported from "
                       << SrcModName << "\n");
   }
