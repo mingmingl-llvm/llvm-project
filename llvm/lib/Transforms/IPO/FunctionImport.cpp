@@ -821,11 +821,12 @@ static void computeImportForFunction(
               VI, Edge.second.getHotness(), Reason, 1);
         }
 
-        if (DeclarationCalleeSummary) {
+        if (DeclarationCalleeSummary) { 
           assert(dyn_cast<FunctionSummary>(DeclarationCalleeSummary));
           StringRef DeclarationSourceModule =
               DeclarationCalleeSummary->modulePath();
-          (*ExportLists)[DeclarationSourceModule][VI].updateValueType(false);
+          if (ExportLists)
+            (*ExportLists)[DeclarationSourceModule][VI].updateValueType(false);
           ImportList[DeclarationSourceModule][VI.getGUID()].updateValueType(
               false);
         }
@@ -1857,6 +1858,9 @@ Expected<bool> FunctionImporter::importFunctions(
       for (const auto *GV : GlobalsToImport)
         dbgs() << DestModule.getSourceFileName() << ": Import " << GV->getName()
                << " from " << SrcModule->getSourceFileName() << "\n";
+      for (const auto* GV : GlobalDecsToImport)
+        dbgs() << DestModule.getSourceFileName() << ": Import declaration " << GV->getName()
+          << "from " << SrcModule->getSourceFileName() << "\n";
     }
 
     if (Error Err =

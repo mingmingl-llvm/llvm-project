@@ -9886,6 +9886,12 @@ bool LLParser::parseGVFlags(GlobalValueSummary::GVFlags &GVFlags) {
         return true;
       GVFlags.CanAutoHide = Flag;
       break;
+    case lltok::kw_importAsDec:
+      Lex.Lex();
+      if (parseToken(lltok::colon, "expected ':'") || parseFlag(Flag))
+        return true;
+      GVFlags.ImportAsDec = Flag;
+      break;
     default:
       return error(Lex.getLoc(), "expected gv flag type");
     }

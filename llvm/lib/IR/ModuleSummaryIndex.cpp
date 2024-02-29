@@ -654,6 +654,8 @@ void ModuleSummaryIndex::exportToDot(
         A.addComment("dsoLocal");
       if (Flags.CanAutoHide)
         A.addComment("canAutoHide");
+      if (Flags.ImportAsDec)
+        A.addComment("importAsDec");
       if (GUIDPreservedSymbols.count(SummaryIt.first))
         A.addComment("preserved");
 
