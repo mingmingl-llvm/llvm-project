@@ -1059,6 +1059,9 @@ Expected<Constant *> IRLinker::linkGlobalValueProto(GlobalValue *SGV,
   bool NeedsRenaming = false;
   GlobalValue *NewGV;
   if (DGV && !ShouldLink) {
+    // FIXME: Import the attributes from the prevailing copy.
+    // They should be identical though.
+    // Pay special attention to the interposable case (linkonce_odr, etc)
     NewGV = DGV;
   } else {
     // If we are done linking global value bodies (i.e. we are performing
