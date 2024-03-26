@@ -4456,6 +4456,17 @@ void IndexBitcodeWriter::writeCombinedGlobalValueSummary() {
   };
 
   const bool HasDeclarationMap = (ModuleToDeclarationSummaries != nullptr);
+
+  auto shouldImportAsDec = [&](GlobalValueSummary *GVS) -> bool {
+    if (!HasDeclarationMap)
+      return false;
+    auto Iter = ModuleToDeclarationSummaries->find(GVS->modulePath().str());
+    if (Iter == ModuleToDeclarationSummaries->end())
+      return false;
+    // For the current module, GVS should be imported as a declaration.
+    return Iter->second.contains(GVS);
+  };
+
   std::set<GlobalValue::GUID> DefOrUseGUIDs;
   forEachSummary([&](GVInfo I, bool IsAliasee) {
     GlobalValueSummary *S = I.second;
@@ -4533,21 +4544,11 @@ void IndexBitcodeWriter::writeCombinedGlobalValueSummary() {
           return std::distance(StackIdIndices.begin(), Lower);
         });
 
-    auto shouldImportFuncAsDec = [&](FunctionSummary *FS) -> bool {
-      if (!HasDeclarationMap)
-        return false;
-      auto Iter = ModuleToDeclarationSummaries->find(FS->modulePath().str());
-      if (Iter == ModuleToDeclarationSummaries->end())
-        return false;
-      // For the current module, FS should be imported as a declaration.
-      return Iter->second.contains(FS);
-    };
-
     NameVals.push_back(*ValueId);
     assert(ModuleIdMap.count(FS->modulePath()));
     NameVals.push_back(ModuleIdMap[FS->modulePath()]);
     NameVals.push_back(
-        getEncodedGVSummaryFlags(FS->flags(), shouldImportFuncAsDec(FS)));
+        getEncodedGVSummaryFlags(FS->flags(), shouldImportAsDec(FS)));
     NameVals.push_back(FS->instCount());
     NameVals.push_back(getEncodedFFlags(FS->fflags()));
     NameVals.push_back(FS->entryCount());
@@ -4596,7 +4597,8 @@ void IndexBitcodeWriter::writeCombinedGlobalValueSummary() {
     NameVals.push_back(AliasValueId);
     assert(ModuleIdMap.count(AS->modulePath()));
     NameVals.push_back(ModuleIdMap[AS->modulePath()]);
-    NameVals.push_back(getEncodedGVSummaryFlags(AS->flags()));
+    NameVals.push_back(
+        getEncodedGVSummaryFlags(AS->flags(), shouldImportAsDec(AS)));
     auto AliaseeValueId = SummaryToValueIdMap[&AS->getAliasee()];
     assert(AliaseeValueId);
     NameVals.push_back(AliaseeValueId);
