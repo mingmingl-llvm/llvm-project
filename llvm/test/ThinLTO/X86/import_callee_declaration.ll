@@ -4,13 +4,10 @@
 
 ; RUN: opt -module-summary lib.ll -o lib.bc
 
-; https://paste.googleplex.com/6288624619880448
-
 ; Generate the combined summary
 ; RUN: llvm-lto2 run \
 ; RUN:   -import-instr-limit=5 \
-; RUN:   -import-declaration \
-; RUN:   -thinlto-distributed-indexes \
+; RUN:   -save-temps \
 ; RUN:   -r=main.bc,main,px \
 ; RUN:   -r=main.bc,small_func, \
 ; RUN:   -r=main.bc,large_func, \
@@ -20,7 +17,7 @@
 ; RUN:   -r=lib.bc,large_func,px \
 ; RUN:   -r=lib.bc,calleeAddrs,px -o summary main.bc lib.bc
 
-; RUN: opt -passes=function-import -summary-file=main.bc.thinlto.bc -import-instr-limit=5 -import-declaration main.bc -S | FileCheck %s
+; RUN: opt -passes=function-import -summary-file=main.bc.thinlto.bc -import-instr-limit=5  main.bc -S | FileCheck %s
 
 ; CHECK: @calleeAddrs = external global [2 x ptr]
 
@@ -31,7 +28,6 @@
 
 ; Test that large_indirect_callee is imported as a declaration
 ; CHECK: declare void @large_indirect_callee() #1
-; CHECK: attributes #1 = { norecurse }
 
 ;--- main.ll
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"

@@ -460,6 +460,7 @@ static void thinLTOInternalizeAndPromoteGUID(
     // First see if we need to promote an internal value because it is not
     // exported.
     if (isExported(S->modulePath(), VI)) {
+      errs() << S->modulePath() << " exports VI " << VI << "\n";
       if (GlobalValue::isLocalLinkage(S->linkage()))
         S->setLinkage(GlobalValue::ExternalLinkage);
       continue;
@@ -471,6 +472,7 @@ static void thinLTOInternalizeAndPromoteGUID(
 
     // Non-exported values with external linkage can be internalized.
     if (GlobalValue::isExternalLinkage(S->linkage())) {
+      errs() << S->modulePath() << " internalizes " << VI << "\n";
       S->setLinkage(GlobalValue::InternalLinkage);
       continue;
     }
@@ -1790,6 +1792,17 @@ Error LTO::runThinLTO(AddStreamFn AddStream, FileCache Cache,
     return (ExportList != ExportLists.end() && ExportList->second.count(VI)) ||
            ExportedGUIDs.count(VI.getGUID());
   };
+
+  for (const auto &[ModulePath, ExportList] : ExportLists) {
+    errs() << "LTO.cpp:\t1797" << ModulePath << "\n";
+    for (const auto &[VI, Type] : ExportList) {
+      errs() << "\texports" << VI << "\n";
+    }
+  }
+
+  for (const auto &GUID : ExportedGUIDs) {
+    errs() << "LTO.cpp:1800\t" << GUID << "\n";
+  }
 
   // Update local devirtualized targets that were exported by cross-module
   // importing or by other devirtualizations marked in the ExportedGUIDs set.

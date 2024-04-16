@@ -394,8 +394,11 @@ class GlobalsImporter final {
         // Any references made by this variable will be marked exported
         // later, in ComputeCrossModuleImport, after import decisions are
         // complete, which is more efficient than adding them here.
-        if (ExportLists)
+        if (ExportLists) {
+          errs() << "FI.cpp\t" << RefSummary->modulePath() << " exports " << VI
+                 << "\n";
           (*ExportLists)[RefSummary->modulePath()][VI].updateValueType(true);
+        }
 
         // If variable is not writeonly we attempt to recursively analyze
         // its references in order to import referenced constants.
@@ -1088,7 +1091,9 @@ void llvm::ComputeCrossModuleImport(
       if (!EI.second.Def) {
         continue;
       }
+
       auto &EVI = EI.first;
+      errs() << "FI.cpp:1094" << ELI.first << " exports " << EVI << "\n";
       // Find the copy defined in the exporting module so that we can mark the
       // values it references in that specific definition as exported.
       // Below we will add all references and called values, without regard to
@@ -1117,6 +1122,12 @@ void llvm::ComputeCrossModuleImport(
           NewExports[Ref].updateValueType(false);
       }
     }
+    for (const auto &[VI, Type] : NewExports) {
+      errs() << "FI.cpp:1126\t" << ELI.first << "\t" << VI << "\n";
+    }
+    for (const auto &[VI, Type] : ELI.second) {
+      errs() << "FI.cpp:1129\t" << ELI.first << "\t" << VI << "\n";
+    }
     // Prune list computed above to only include values defined in the exporting
     // module. We do this after the above insertion since we may hit the same
     // ref/call target multiple times in above loop, and it is more efficient to
@@ -1127,6 +1138,7 @@ void llvm::ComputeCrossModuleImport(
       else
         ++EI;
     }
+
     ELI.second.insert(NewExports.begin(), NewExports.end());
   }
 
