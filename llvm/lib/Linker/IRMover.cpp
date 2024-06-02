@@ -410,6 +410,9 @@ class IRLinker {
   std::vector<GlobalValue *> Worklist;
   std::vector<std::pair<GlobalValue *, Value*>> RAUWWorklist;
 
+  // Track a set of protos to link.
+  SetVector<GlobalValue *> ProtosToLink;
+
   /// Set of globals with eagerly copied metadata that may require remapping.
   /// This remapping is performed after metadata linking.
   DenseSet<GlobalObject *> UnmappedMetadata;
@@ -417,6 +420,25 @@ class IRLinker {
   void maybeAdd(GlobalValue *GV) {
     if (ValuesToLink.insert(GV).second)
       Worklist.push_back(GV);
+  }
+
+  void maybeAddProto(GlobalValue *GV) {
+    if (!ValuesToLink.contains(GV))
+      ProtosToLink.insert(GV);
+  }
+
+  Error mapValue(GlobalValue *GV) {
+    // Already mapped.
+    if (ValueMap.find(GV) != ValueMap.end() ||
+        IndirectSymbolValueMap.find(GV) != IndirectSymbolValueMap.end())
+      return Error::success();
+
+    assert(!GV->isDeclaration() && "Source value must not be declaration");
+    Mapper.mapValue(*GV);
+    if (FoundError)
+      return std::move(*FoundError);
+    flushRAUWWorklist();
+    return Error::success();
   }
 
   /// Whether we are importing globals for ThinLTO, as opposed to linking the
@@ -540,6 +562,7 @@ public:
   IRLinker(Module &DstM, MDMapT &SharedMDs,
            IRMover::IdentifiedStructTypeSet &Set, std::unique_ptr<Module> SrcM,
            ArrayRef<GlobalValue *> ValuesToLink,
+           ArrayRef<GlobalValue *> ProtosToLink,
            IRMover::LazyCallback AddLazyFor, bool IsPerformingImport)
       : DstM(DstM), SrcM(std::move(SrcM)), AddLazyFor(std::move(AddLazyFor)),
         TypeMap(Set), GValMaterializer(*this), LValMaterializer(*this),
@@ -551,6 +574,8 @@ public:
     ValueMap.getMDMap() = std::move(SharedMDs);
     for (GlobalValue *GV : ValuesToLink)
       maybeAdd(GV);
+    for (GlobalValue *GV : ProtosToLink)
+      maybeAddProto(GV);
     if (IsPerformingImport)
       prepareCompileUnitsForImport();
   }
@@ -755,10 +780,14 @@ GlobalValue *IRLinker::copyGlobalValueProto(const GlobalValue *SGV,
     NewGV->setLinkage(GlobalValue::ExternalWeakLinkage);
 
   if (auto *NewGO = dyn_cast<GlobalObject>(NewGV)) {
-    // Metadata for global variables and function declarations is copied eagerly.
-    if (isa<GlobalVariable>(SGV) || SGV->isDeclaration()) {
+    // Copy metadata eagerly when source value is a global variable or function
+    // declaration, or when source value is a function but destination module
+    // copies the declaration only.
+    const bool CopyFuncDeclaration = (isa<Function>(SGV) && !ForDefinition);
+    if (isa<GlobalVariable>(SGV) || SGV->isDeclaration() ||
+        CopyFuncDeclaration) {
       NewGO->copyMetadata(cast<GlobalObject>(SGV), 0);
-      if (SGV->isDeclaration() && NewGO->hasMetadata())
+      if ((SGV->isDeclaration() || CopyFuncDeclaration) && NewGO->hasMetadata())
         UnmappedMetadata.insert(NewGO);
     }
   }
@@ -1613,16 +1642,16 @@ Error IRLinker::run() {
     GlobalValue *GV = Worklist.back();
     Worklist.pop_back();
 
-    // Already mapped.
-    if (ValueMap.find(GV) != ValueMap.end() ||
-        IndirectSymbolValueMap.find(GV) != IndirectSymbolValueMap.end())
-      continue;
+    if (Error E = mapValue(GV))
+      return E;
+  }
 
-    assert(!GV->isDeclaration());
-    Mapper.mapValue(*GV);
-    if (FoundError)
-      return std::move(*FoundError);
-    flushRAUWWorklist();
+  while (!ProtosToLink.empty()) {
+    GlobalValue *GV = ProtosToLink.back();
+    ProtosToLink.pop_back();
+
+    if (Error E = mapValue(GV))
+      return E;
   }
 
   // Note that we are done linking global value bodies. This prevents
@@ -1776,10 +1805,11 @@ IRMover::IRMover(Module &M) : Composite(M) {
 
 Error IRMover::move(std::unique_ptr<Module> Src,
                     ArrayRef<GlobalValue *> ValuesToLink,
+                    ArrayRef<GlobalValue *> ProtosToLink,
                     LazyCallback AddLazyFor, bool IsPerformingImport) {
   IRLinker TheIRLinker(Composite, SharedMDs, IdentifiedStructTypes,
-                       std::move(Src), ValuesToLink, std::move(AddLazyFor),
-                       IsPerformingImport);
+                       std::move(Src), ValuesToLink, ProtosToLink,
+                       std::move(AddLazyFor), IsPerformingImport);
   Error E = TheIRLinker.run();
   Composite.dropTriviallyDeadConstantArrays();
   return E;

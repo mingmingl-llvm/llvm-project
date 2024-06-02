@@ -1001,7 +1001,7 @@ Error LTO::linkRegularLTO(RegularLTOState::AddedModule Mod,
     Keep.push_back(GV);
   }
 
-  return RegularLTO.Mover->move(std::move(Mod.M), Keep, nullptr,
+  return RegularLTO.Mover->move(std::move(Mod.M), Keep, {}, nullptr,
                                 /* IsPerformingImport */ false);
 }
 

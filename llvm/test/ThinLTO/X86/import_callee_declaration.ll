@@ -80,6 +80,7 @@
 ; RUN: llvm-lto2 run \
 ; RUN:   -debug-only=function-import \
 ; RUN:   -save-temps \
+; RUN:   -enable-import-metadata \
 ; RUN:   -thinlto-threads=1 \
 ; RUN:   -import-instr-limit=7 \
 ; RUN:   -import-instr-evolution-factor=1.0 \
@@ -96,8 +97,6 @@
 ; RUN:   -r=lib.bc,large_indirect_bar_alias,px \
 ; RUN:   -r=lib.bc,calleeAddrs,px -r=lib.bc,calleeAddrs2,px -o in-process main.bc lib.bc 2>&1 | FileCheck %s --check-prefix=IMPORTDUMP
 
-; TODO: Extend this test case to test IR once postlink optimizer makes use of
-; the import type for declarations.
 ; IMPORTDUMP-DAG: Not importing function 11825436545918268459 callee from lib.cc
 ; IMPORTDUMP-DAG: Is importing function declaration 14343440786664691134 large_indirect_callee from lib.cc
 ; IMPORTDUMP-DAG: Is importing function definition 13568239288960714650 small_indirect_callee from lib.cc
@@ -108,17 +107,20 @@
 ; IMPORTDUMP-DAG: Is importing alias declaration 13590951773474913315 large_indirect_bar_alias from lib.cc
 ; IMPORTDUMP-DAG: Not importing function 13770917885399536773 large_indirect_bar
 
-; RUN: llvm-dis in-process.1.3.import.bc -o - | FileCheck %s --check-prefix=IMPORT
+; RUN: llvm-dis in-process.1.3.import.bc -o - | FileCheck %s --check-prefix=IR
 
 ; RUN: llvm-dis in-process.2.2.internalize.bc -o - | FileCheck %s --check-prefix=INTERNALIZE
 
-; IMPORT-DAG: define available_externally void @small_func
-; IMPORT-DAG: define available_externally hidden void @small_indirect_callee
-; IMPORT-DAG: declare void @large_func
-; IMPORT-NOT: large_indirect_callee
-; IMPORT-NOT: large_indirect_callee_alias
-; IMPORT-NOT: large_indirect_bar
-; IMPORT-NOT: large_indirect_bar_alias
+; IR-DAG: define available_externally void @small_func
+; IR-DAG: define available_externally hidden void @small_indirect_callee
+; IR-DAG: declare void @large_func()
+; IR-DAG: declare !thinlto_src_module ![[SRCMOD:[0-9]+]] !thinlto_src_file ![[SRCFILE:[0-9]+]] void @large_indirect_callee()
+; IR-NOT: declare void @large_indirect_bar
+; IR-NOT: declare void @large_indirect_bar_alias
+; IR-NOT: declare void @large_indirect_callee_alias
+
+; IR: ![[SRCMOD]] = !{!"lib.bc"}
+; IR: ![[SRCFILE]] = !{!"lib.cc"}
 
 ; INTERNALIZE: define internal void @callee()
 
@@ -153,7 +155,7 @@ define void @callee() #1 {
   ret void
 }
 
-define void @large_indirect_callee()#2 {
+define void @large_indirect_callee()#2 !prof !5 {
   call void @callee()
   call void @callee()
   call void @callee()
@@ -175,7 +177,7 @@ define void @large_indirect_bar()#2 {
   ret void
 }
 
-define internal void @small_indirect_callee() #0 {
+define internal void @small_indirect_callee() #0 !prof !4 {
 entry:
   %0 = load ptr, ptr @calleeAddrs2
   call void %0(), !prof !3
@@ -197,7 +199,7 @@ entry:
   ret void
 }
 
-define void @large_func() #0 {
+define void @large_func() #0 !prof !6 {
 entry:
   call void @callee()
   call void @callee()
@@ -219,3 +221,6 @@ attributes #2 = { norecurse }
 !1 = !{!"VP", i32 0, i64 1, i64 13568239288960714650, i64 1}
 !2 = !{!"VP", i32 0, i64 1, i64 16730173943625350469, i64 1}
 !3 = !{!"VP", i32 0, i64 1, i64 13590951773474913315, i64 1}
+!4 = !{!"function_entry_count", i64 1}
+!5 = !{!"function_entry_count", i64 2}
+!6 = !{!"function_entry_count", i64 3}

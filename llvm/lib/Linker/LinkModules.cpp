@@ -598,7 +598,7 @@ bool ModuleLinker::run() {
   // diagnostics.
   bool HasErrors = false;
   if (Error E =
-          Mover.move(std::move(SrcM), ValuesToLink.getArrayRef(),
+          Mover.move(std::move(SrcM), ValuesToLink.getArrayRef(), {},
                      IRMover::LazyCallback(
                          [this](GlobalValue &GV, IRMover::ValueAdder Add) {
                            addLazyFor(GV, Add);

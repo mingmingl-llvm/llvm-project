@@ -1755,6 +1755,7 @@ Expected<bool> FunctionImporter::importFunctions(
 
     // Find the globals to import
     SetVector<GlobalValue *> GlobalsToImport;
+    SetVector<GlobalValue *> ProtosToImport;
     for (Function &F : *SrcModule) {
       if (!F.hasName())
         continue;
@@ -1772,9 +1773,10 @@ Expected<bool> FunctionImporter::importFunctions(
                                 : (MaybeImportType ? " declaration " : " "))
                         << GUID << " " << F.getName() << " from "
                         << SrcModule->getSourceFileName() << "\n");
-      if (ImportDefinition) {
-        if (Error Err = F.materialize())
-          return std::move(Err);
+      if (MaybeImportType) {
+        if (ImportDefinition)
+          if (Error Err = F.materialize())
+            return std::move(Err);
         // MemProf should match function's definition and summary,
         // 'thinlto_src_module' is needed.
         if (EnableImportMetadata || EnableMemProfContextDisambiguation) {
@@ -1791,7 +1793,13 @@ Expected<bool> FunctionImporter::importFunctions(
                           {MDString::get(DestModule.getContext(),
                                          SrcModule->getSourceFileName())}));
         }
-        GlobalsToImport.insert(&F);
+        if (ImportDefinition)
+          GlobalsToImport.insert(&F);
+        else {
+          // There is no need to materialize function if we only want to import
+          // the declaration.
+          ProtosToImport.insert(&F);
+        }
       }
     }
     for (GlobalVariable &GV : SrcModule->globals()) {
@@ -1884,9 +1892,10 @@ Expected<bool> FunctionImporter::importFunctions(
                << " from " << SrcModule->getSourceFileName() << "\n";
     }
 
-    if (Error Err = Mover.move(std::move(SrcModule),
-                               GlobalsToImport.getArrayRef(), nullptr,
-                               /*IsPerformingImport=*/true))
+    if (Error Err =
+            Mover.move(std::move(SrcModule), GlobalsToImport.getArrayRef(),
+                       ProtosToImport.getArrayRef(), nullptr,
+                       /*IsPerformingImport=*/true))
       return createStringError(errc::invalid_argument,
                                Twine("Function Import: link error: ") +
                                    toString(std::move(Err)));
