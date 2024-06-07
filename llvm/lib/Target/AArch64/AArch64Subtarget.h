@@ -210,9 +210,10 @@ public:
 
   /// Return true if the CPU supports any kind of instruction fusion.
   bool hasFusion() const {
-    return hasArithmeticBccFusion() || hasArithmeticCbzFusion() ||
-           hasFuseAES() || hasFuseArithmeticLogic() || hasFuseCCSelect() ||
-           hasFuseAdrpAdd() || hasFuseLiterals();
+    return ST.hasCmpBccFusion() || hasArithmeticBccFusion() ||
+           hasArithmeticCbzFusion() || hasFuseAES() ||
+           hasFuseArithmeticLogic() || hasFuseCCSelect() || hasFuseAdrpAdd() ||
+           hasFuseLiterals();
   }
 
   unsigned getMaxInterleaveFactor() const { return MaxInterleaveFactor; }
