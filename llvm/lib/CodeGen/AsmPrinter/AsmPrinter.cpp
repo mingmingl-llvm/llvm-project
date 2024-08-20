@@ -2757,6 +2757,7 @@ void AsmPrinter::emitJumpTableInfo() {
       OutStreamer->emitLabel(GetJTISymbol(JTI, true));
 
     MCSymbol* JTISymbol = GetJTISymbol(JTI);
+    errs() << "AP.cpp:2760:\t" << JTISymbol->getName() << "\n";
     OutStreamer->emitLabel(JTISymbol);
 
     // Defer MCAssembler based constant folding due to a performance issue. The
