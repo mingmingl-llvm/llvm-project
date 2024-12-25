@@ -71,6 +71,7 @@
 #include "llvm/Transforms/IPO/SCCP.h"
 #include "llvm/Transforms/IPO/SampleProfile.h"
 #include "llvm/Transforms/IPO/SampleProfileProbe.h"
+#include "llvm/Transforms/IPO/TypeRefinePass.h"
 #include "llvm/Transforms/IPO/WholeProgramDevirt.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Instrumentation/CGProfile.h"
@@ -1778,6 +1779,7 @@ ModulePassManager PassBuilder::buildThinLTODefaultPipeline(
   if (!UseCtxProfile.empty()) {
     MPM.addPass(
         buildModuleInlinerPipeline(Level, ThinOrFullLTOPhase::ThinLTOPostLink));
+    MPM.addPass(TypeRefinePass());
   } else {
     // Add the core simplification pipeline.
     MPM.addPass(buildModuleSimplificationPipeline(
