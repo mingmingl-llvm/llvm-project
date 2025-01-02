@@ -1154,7 +1154,8 @@ void X86_64::relocateAlloc(InputSectionBase &sec, uint8_t *buf) const {
       continue;
     uint8_t *loc = buf + rel.offset;
     if (rel.type == R_X86_64_32S) {
-      llvm::errs() << "Relocating " << rel.sym->getName();
+      llvm::errs() << "Relocating " << rel.sym->getName() << " in sec "
+                   << sec.name << " at offset " << rel.offset;
       if (sec.file != nullptr) {
         llvm::errs() << " in " << sec.file->getName() << "\n";
       }
