@@ -1153,6 +1153,12 @@ void X86_64::relocateAlloc(InputSectionBase &sec, uint8_t *buf) const {
     if (rel.expr == R_NONE) // See deleteFallThruJmpInsn
       continue;
     uint8_t *loc = buf + rel.offset;
+    if (rel.type == R_X86_64_32S) {
+      llvm::errs() << "Relocating " << rel.sym->getName();
+      if (sec.file != nullptr) {
+        llvm::errs() << " in " << sec.file->getName() << "\n";
+      }
+    }
     const uint64_t val = sec.getRelocTargetVA(ctx, rel, secAddr + rel.offset);
     relocate(loc, rel, val);
   }
