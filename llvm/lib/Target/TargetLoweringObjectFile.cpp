@@ -354,6 +354,12 @@ MCSection *TargetLoweringObjectFile::getSectionForJumpTable(
                                Alignment);
 }
 
+MCSection *TargetLoweringObjectFile::getSectionForJumpTable(
+    const Function &F, const TargetMachine &TM,
+    const MachineJumpTableEntry &JTE) const {
+  return getSectionForJumpTable(F, TM);
+}
+
 bool TargetLoweringObjectFile::shouldPutJumpTableInFunctionSection(
     bool UsesLabelDifference, const Function &F) const {
   // In PIC mode, we need to emit the jump table to the same section as the

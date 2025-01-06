@@ -71,6 +71,12 @@ namespace llvm {
   /// using profile information.
   MachineFunctionPass *createMachineFunctionSplitterPass();
 
+  /// createStaticDataSplitterPass - This pass splits out cold static data into
+  /// a cold-suffixed section using profile information.
+  MachineFunctionPass *
+  createStaticDataSplitterPass(const bool SplitJumpTable,
+                               const bool SplitConstantPool);
+
   /// MachineFunctionPrinter pass - This pass prints out the machine function to
   /// the given stream as a debugging tool.
   MachineFunctionPass *

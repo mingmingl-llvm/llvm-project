@@ -968,6 +968,22 @@ MCSection *TargetLoweringObjectFileELF::getSectionForJumpTable(
                                    /* AssociatedSymbol */ nullptr);
 }
 
+MCSection *TargetLoweringObjectFileELF::getSectionForJumpTable(
+    const Function &F, const TargetMachine &TM,
+    const MachineJumpTableEntry &JTE) const {
+  // If the function can be removed, produce a unique section so that
+  // the table doesn't prevent the removal.
+  const Comdat *C = F.getComdat();
+  bool EmitUniqueSection = TM.getFunctionSections() || C;
+  if (!EmitUniqueSection)
+    return ReadOnlySection;
+
+  return selectELFSectionForGlobal(getContext(), &F, SectionKind::getReadOnly(),
+                                   getMangler(), TM, EmitUniqueSection,
+                                   ELF::SHF_ALLOC, &NextUniqueID,
+                                   /* AssociatedSymbol */ nullptr);
+}
+
 MCSection *TargetLoweringObjectFileELF::getSectionForLSDA(
     const Function &F, const MCSymbol &FnSym, const TargetMachine &TM) const {
   // If neither COMDAT nor function sections, use the monolithic LSDA section.
