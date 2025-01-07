@@ -88,6 +88,12 @@ template <> struct ilist_callback_traits<MachineBasicBlock> {
   }
 };
 
+enum class DataHotness {
+  Unknown,
+  Cold,
+  Hot,
+};
+
 /// MachineFunctionInfo - This class can be derived from and used by targets to
 /// hold private target-specific information for each MachineFunction.  Objects
 /// of type are accessed/created with MF::getInfo and destroyed when the

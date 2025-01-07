@@ -1340,6 +1340,12 @@ unsigned MachineJumpTableInfo::createJumpTableIndex(
   return JumpTables.size()-1;
 }
 
+void MachineJumpTableInfo::updateJumpTableHotness(size_t JTI,
+                                                  DataHotness Hotness) {
+  assert(JTI < JumpTables.size() && "Invalid JTI!");
+  JumpTables[JTI].Hotness = std::max(JumpTables[JTI].Hotness, Hotness);
+}
+
 /// If Old is the target of any jump tables, update the jump tables to branch
 /// to New instead.
 bool MachineJumpTableInfo::ReplaceMBBInJumpTables(MachineBasicBlock *Old,
@@ -1440,6 +1446,10 @@ MachineConstantPoolEntry::getSectionKind(const DataLayout *DL) const {
   default:
     return SectionKind::getReadOnly();
   }
+}
+
+void MachineConstantPoolEntry::updateHotness(DataHotness InputHotness) {
+  Hotness = std::max(Hotness, InputHotness);
 }
 
 MachineConstantPool::~MachineConstantPool() {
@@ -1545,6 +1555,12 @@ unsigned MachineConstantPool::getConstantPoolIndex(MachineConstantPoolValue *V,
 
   Constants.push_back(MachineConstantPoolEntry(V, Alignment));
   return Constants.size()-1;
+}
+
+void MachineConstantPool::updateConstantPoolEntryHotness(unsigned Idx,
+                                                         DataHotness Hotness) {
+  assert(Idx < Constants.size() && "Invalid constant pool index!");
+  Constants[Idx].updateHotness(Hotness);
 }
 
 void MachineConstantPool::print(raw_ostream &OS) const {
