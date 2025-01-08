@@ -999,6 +999,8 @@ public:
 
   /// Return an index for MachineJumpTableInfo if \p this basic block ends with
   /// an indirect jump using a jump table, otherwise -1.
+  /// This function is a thin wrapper and forward calls to the per-target method
+  /// `TargetInstrInfo::getjumpTableIndex`.
   int getJumpTableIndex() const;
 
   void pop_front() { Insts.pop_front(); }
