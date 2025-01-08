@@ -29,7 +29,6 @@ class FoldingSetNodeID;
 class MachineConstantPool;
 class raw_ostream;
 class Type;
-enum class DataHotness;
 
 /// Abstract base class for all machine specific constantpool value subclasses.
 ///
@@ -37,8 +36,6 @@ class MachineConstantPoolValue {
   virtual void anchor();
 
   Type *Ty;
-
-  DataHotness Hotness;
 
 public:
   explicit MachineConstantPoolValue(Type *ty) : Ty(ty) {}
@@ -68,8 +65,6 @@ inline raw_ostream &operator<<(raw_ostream &OS,
 /// the constant pool.
 /// An entry in a MachineConstantPool
 class MachineConstantPoolEntry {
-  DataHotness Hotness;
-
 public:
   /// The constant itself.
   union {
@@ -107,8 +102,6 @@ public:
   bool needsRelocation() const;
 
   SectionKind getSectionKind(const DataLayout *DL) const;
-
-  void updateHotness(DataHotness Hotness);
 };
 
 /// The MachineConstantPool class keeps track of constants referenced by a
@@ -148,8 +141,6 @@ public:
 
   /// isEmpty - Return true if this constant pool contains no constants.
   bool isEmpty() const { return Constants.empty(); }
-
-  void updateConstantPoolEntryHotness(unsigned Idx, DataHotness Hotness);
 
   const std::vector<MachineConstantPoolEntry> &getConstants() const {
     return Constants;

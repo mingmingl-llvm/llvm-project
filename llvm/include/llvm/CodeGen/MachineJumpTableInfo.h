@@ -38,8 +38,7 @@ struct MachineJumpTableEntry {
 
   DataHotness Hotness;
 
-  explicit MachineJumpTableEntry(const std::vector<MachineBasicBlock*> &M)
-  : MBBs(M) {}
+  explicit MachineJumpTableEntry(const std::vector<MachineBasicBlock *> &M);
 };
 
 class MachineJumpTableInfo {

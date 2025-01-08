@@ -1291,6 +1291,10 @@ const unsigned MachineFunction::DebugOperandMemNumber = 1000000;
 //  MachineJumpTableInfo implementation
 //===----------------------------------------------------------------------===//
 
+MachineJumpTableEntry::MachineJumpTableEntry(
+    const std::vector<MachineBasicBlock *> &MBBs)
+    : MBBs(MBBs), Hotness(DataHotness::Unknown) {}
+
 /// Return the size of each entry in the jump table.
 unsigned MachineJumpTableInfo::getEntrySize(const DataLayout &TD) const {
   // The size of a jump table entry is 4 bytes unless the entry is just the
@@ -1343,6 +1347,9 @@ unsigned MachineJumpTableInfo::createJumpTableIndex(
 void MachineJumpTableInfo::updateJumpTableHotness(size_t JTI,
                                                   DataHotness Hotness) {
   assert(JTI < JumpTables.size() && "Invalid JTI!");
+  // Note record the largest hotness is important for mergable data (constant
+  // pools). Even if jump table instances are not merged, record the largest
+  // value seen fwiw.
   JumpTables[JTI].Hotness = std::max(JumpTables[JTI].Hotness, Hotness);
 }
 
@@ -1448,10 +1455,6 @@ MachineConstantPoolEntry::getSectionKind(const DataLayout *DL) const {
   }
 }
 
-void MachineConstantPoolEntry::updateHotness(DataHotness InputHotness) {
-  Hotness = std::max(Hotness, InputHotness);
-}
-
 MachineConstantPool::~MachineConstantPool() {
   // A constant may be a member of both Constants and MachineCPVsSharingEntries,
   // so keep track of which we've deleted to avoid double deletions.
@@ -1555,12 +1558,6 @@ unsigned MachineConstantPool::getConstantPoolIndex(MachineConstantPoolValue *V,
 
   Constants.push_back(MachineConstantPoolEntry(V, Alignment));
   return Constants.size()-1;
-}
-
-void MachineConstantPool::updateConstantPoolEntryHotness(unsigned Idx,
-                                                         DataHotness Hotness) {
-  assert(Idx < Constants.size() && "Invalid constant pool index!");
-  Constants[Idx].updateHotness(Hotness);
 }
 
 void MachineConstantPool::print(raw_ostream &OS) const {

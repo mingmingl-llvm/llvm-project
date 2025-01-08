@@ -7,12 +7,12 @@
 //===----------------------------------------------------------------------===//
 //
 // This pass uses profile information to partition static data sections into
-// hot and cold ones. For now it only handles jump tables.
+// hot and cold ones. It begins to split jump tables based on profile, and
+// subsequent patches will handle constant pools and other module internal data.
 //
 // For the original RFC of this pass please see
 // https://discourse.llvm.org/t/rfc-profile-guided-static-data-partitioning/83744.
 
-#include "llvm/CodeGen/StaticDataSplitter.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/CodeGen/MBFIWrapper.h"

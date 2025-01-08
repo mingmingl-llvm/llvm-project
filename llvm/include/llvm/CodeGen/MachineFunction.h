@@ -88,6 +88,9 @@ template <> struct ilist_callback_traits<MachineBasicBlock> {
   }
 };
 
+// The hotness of static data tracked by a MachineFunction and not represented
+// as a global object in the module IR / MIR. Typical examples are
+// MachineJumpTableInfo and MachineConstantPool.
 enum class DataHotness {
   Unknown,
   Cold,

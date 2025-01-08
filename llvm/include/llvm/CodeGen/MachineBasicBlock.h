@@ -997,9 +997,8 @@ public:
   /// no changes occurred in the meantime.
   bool canSplitCriticalEdge(const MachineBasicBlock *Succ) const;
 
-  ///  Return an index for MachineJumpTableInfo if \p this basic block ends with
-  ///  an indirect jump
-  /// using a jump table, otherwise -1.
+  /// Return an index for MachineJumpTableInfo if \p this basic block ends with
+  /// an indirect jump using a jump table, otherwise -1.
   int getJumpTableIndex() const;
 
   void pop_front() { Insts.pop_front(); }
