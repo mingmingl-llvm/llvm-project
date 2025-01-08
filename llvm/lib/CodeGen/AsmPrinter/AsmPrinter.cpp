@@ -168,6 +168,11 @@ static cl::opt<bool> BBAddrMapSkipEmitBBEntries(
              "unnecessary for some PGOAnalysisMap features."),
     cl::Hidden, cl::init(false));
 
+static cl::opt<bool>
+    EmitStaticDataHotnessSuffix("emit-static-data-hotness-suffix", cl::Hidden,
+                                cl::init(false), cl::ZeroOrMore,
+                                cl::desc("Emit static data hotness suffix"));
+
 static cl::opt<bool> EmitJumpTableSizesSection(
     "emit-jump-table-sizes-section",
     cl::desc("Emit a section containing jump table addresses and sizes"),
@@ -2876,42 +2881,106 @@ void AsmPrinter::emitJumpTableInfo() {
       MJTI->getEntryKind() == MachineJumpTableInfo::EK_LabelDifference32 ||
           MJTI->getEntryKind() == MachineJumpTableInfo::EK_LabelDifference64,
       F);
-  if (JTInDiffSection) {
-    // Drop it in the readonly section.
-    MCSection *ReadOnlySection = TLOF.getSectionForJumpTable(F, TM);
-    OutStreamer->switchSection(ReadOnlySection);
+  
+  if (!EmitStaticDataHotnessSuffix) {
+    std::vector<unsigned> JumpTableIndices;
+    for (unsigned JTI = 0, e = JT.size(); JTI != e; ++JTI)
+      JumpTableIndices.push_back(JTI);
+    emitJumpTables(
+        JumpTableIndices,
+        TLOF.getSectionForJumpTable(F, TM, llvm::JumpTableType::kUnknown),
+        JTInDiffSection, MJTI);
+    return;
   }
 
-  emitAlignment(Align(MJTI->getEntryAlignment(DL)));
+  // Iterate all jump tables, put them into two vectors, hot and lukewarm
+  std::vector<unsigned> HotOrWarmJumpTableIndices, ColdJumpTableIndices;
+
+  for (unsigned JTI = 0, e = JT.size(); JTI != e; ++JTI) {
+    if (JT[JTI].Type == llvm::JumpTableType::Hot)
+      HotOrWarmJumpTableIndices.push_back(JTI);
+    else if (JT[JTI].Type == llvm::JumpTableType::Cold)
+      ColdJumpTableIndices.push_back(JTI);
+    else {
+      llvm::errs() << "AsmPrinter.cpp:2776\t" << "Unknown jump table type\n";
+    }
+  }
+
+  if (EmitJumpTableDebugInfo) {
+    errs() << "Machine Function name " << MF->getName() << "\n";
+    errs() << "Hot or warm jump table indices\n";
+    for (auto &JTI : HotOrWarmJumpTableIndices) {
+      errs() << "\t" << JTI << "\n";
+    }
+    errs() << "Cold jump table indices\n";
+    for (auto &JTI : ColdJumpTableIndices) {
+      errs() << "\t" << JTI << "\n";
+    }
+  }
+
+  if (!HotOrWarmJumpTableIndices.empty())
+    emitJumpTables(HotOrWarmJumpTableIndices,
+                 TLOF.getSectionForJumpTable(F, TM, llvm::JumpTableType::Hot),
+                 JTInDiffSection, MJTI);
+
+  if (!ColdJumpTableIndices.empty())
+    emitJumpTables(
+        ColdJumpTableIndices,
+        TLOF.getSectionForJumpTable(F, TM, llvm::JumpTableType::Cold),
+        JTInDiffSection, MJTI);
+
+  return;
+}
+
+void AsmPrinter::emitJumpTables(const std::vector<unsigned> &JumpTableIndices,
+                                MCSection *JumpTableSection,
+                                bool JTInDiffSection,
+                                const MachineJumpTableInfo *MJTI) {
+  if (JumpTableIndices.empty())
+    return;
+
+  const DataLayout &DL = MF->getDataLayout();
+  if (JTInDiffSection) {
+    // Drop it in the readonly section.
+    // MCSection *ReadOnlySection =
+    //    TLOF.getSectionForJumpTable(F, TM, llvm::JumpTableType::Unknown);
+    OutStreamer->switchSection(JumpTableSection);
+  }
+
+  emitAlignment(Align(MJTI->getEntryAlignment(MF->getDataLayout())));
 
   // Jump tables in code sections are marked with a data_region directive
   // where that's supported.
   if (!JTInDiffSection)
     OutStreamer->emitDataRegion(MCDR_DataRegionJT32);
 
-  for (unsigned JTI = 0, e = JT.size(); JTI != e; ++JTI) {
-    const std::vector<MachineBasicBlock*> &JTBBs = JT[JTI].MBBs;
+  const auto &JT = MJTI->getJumpTables();
+  for (unsigned Index = 0, e = JumpTableIndices.size(); Index != e; ++Index) {
+    const std::vector<MachineBasicBlock *> &JTBBs =
+        JT[JumpTableIndices[Index]].MBBs;
 
     // If this jump table was deleted, ignore it.
-    if (JTBBs.empty()) continue;
+    if (JTBBs.empty())
+      continue;
 
     // For the EK_LabelDifference32 entry, if using .set avoids a relocation,
     /// emit a .set directive for each unique entry.
     if (MJTI->getEntryKind() == MachineJumpTableInfo::EK_LabelDifference32 &&
         MAI->doesSetDirectiveSuppressReloc()) {
-      SmallPtrSet<const MachineBasicBlock*, 16> EmittedSets;
+      SmallPtrSet<const MachineBasicBlock *, 16> EmittedSets;
       const TargetLowering *TLI = MF->getSubtarget().getTargetLowering();
-      const MCExpr *Base = TLI->getPICJumpTableRelocBaseExpr(MF,JTI,OutContext);
+      const MCExpr *Base = TLI->getPICJumpTableRelocBaseExpr(
+          MF, JumpTableIndices[Index], OutContext);
       for (const MachineBasicBlock *MBB : JTBBs) {
         if (!EmittedSets.insert(MBB).second)
           continue;
 
         // .set LJTSet, LBB32-base
         const MCExpr *LHS =
-          MCSymbolRefExpr::create(MBB->getSymbol(), OutContext);
-        OutStreamer->emitAssignment(GetJTSetSymbol(JTI, MBB->getNumber()),
-                                    MCBinaryExpr::createSub(LHS, Base,
-                                                            OutContext));
+            MCSymbolRefExpr::create(MBB->getSymbol(), OutContext);
+        OutStreamer->emitAssignment(
+            GetJTSetSymbol(JumpTableIndices[Index], MBB->getNumber()),
+            MCBinaryExpr::createSub(LHS, Base, OutContext));
       }
     }
 
@@ -2923,19 +2992,19 @@ void AsmPrinter::emitJumpTableInfo() {
       // FIXME: This doesn't have to have any specific name, just any randomly
       // named and numbered local label started with 'l' would work.  Simplify
       // GetJTISymbol.
-      OutStreamer->emitLabel(GetJTISymbol(JTI, true));
+      OutStreamer->emitLabel(GetJTISymbol(JumpTableIndices[Index], true));
 
-    MCSymbol* JTISymbol = GetJTISymbol(JTI);
+    MCSymbol *JTISymbol = GetJTISymbol(JumpTableIndices[Index]);
     OutStreamer->emitLabel(JTISymbol);
 
     // Defer MCAssembler based constant folding due to a performance issue. The
     // label differences will be evaluated at write time.
     for (const MachineBasicBlock *MBB : JTBBs)
-      emitJumpTableEntry(MJTI, MBB, JTI);
+      emitJumpTableEntry(MJTI, MBB, JumpTableIndices[Index]);
   }
 
   if (EmitJumpTableSizesSection)
-    emitJumpTableSizesSection(MJTI, F);
+    emitJumpTableSizesSection(MJTI, MF->getFunction());
 
   if (!JTInDiffSection)
     OutStreamer->emitDataRegion(MCDR_DataRegionEnd);

@@ -453,6 +453,9 @@ public:
   /// function to the current output stream.
   virtual void emitJumpTableInfo();
 
+  virtual void emitJumpTables(const std::vector<unsigned>& JumpTableIndices,
+   MCSection *JumpSection, bool JTInDiffSection, const MachineJumpTableInfo* MJTI);
+
   /// Emit the specified global variable to the .s file.
   virtual void emitGlobalVariable(const GlobalVariable *GV);
 
