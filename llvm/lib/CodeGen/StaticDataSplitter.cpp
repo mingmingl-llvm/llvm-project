@@ -10,6 +10,7 @@
 // cold-suffixed section (e.g., `rodata.cold`, `.data.rel.ro.cold`).
 
 #include "llvm/CodeGen/StaticDataSplitter.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/CodeGen/MBFIWrapper.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -28,8 +29,11 @@ using namespace llvm;
 
 #define DEBUG_TYPE "static-data-splitter"
 
+STATISTIC(NumHotJumpTables, "Number of hot jump tables seen");
+STATISTIC(NumColdJumpTables, "Number of cold jump tables seen");
+STATISTIC(NumUnknownJumpTablse, "Number of jump tables with unknown hotness");
+
 class StaticDataSplitter : public MachineFunctionPass {
-  StaticDataSplitterOptions Options;
 
   const MachineBranchProbabilityInfo *MBPI = nullptr;
   const MachineBlockFrequencyInfo *MBFI = nullptr;
@@ -43,8 +47,7 @@ class StaticDataSplitter : public MachineFunctionPass {
 public:
   static char ID;
 
-  StaticDataSplitter(StaticDataSplitterOptions Options)
-      : MachineFunctionPass(ID), Options(Options) {
+  StaticDataSplitter() : MachineFunctionPass(ID) {
     initializeStaticDataSplitterPass(*PassRegistry::getPassRegistry());
   }
 
@@ -62,12 +65,12 @@ public:
 
 // TODO: The return value
 bool StaticDataSplitter::runOnMachineFunction(MachineFunction &MF) {
-  if (!Options.SplitJumpTables && !Options.SplitConstantPool)
-    return false;
 
   MBPI = &getAnalysis<MachineBranchProbabilityInfoWrapperPass>().getMBPI();
   MBFI = &getAnalysis<MachineBlockFrequencyInfoWrapperPass>().getMBFI();
   PSI = &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
+
+  splitJumpTables(MF);
 
   return false;
 }
@@ -80,13 +83,19 @@ void StaticDataSplitter::splitJumpTablesWithProfiles(
     if (JTI == -1)
       continue;
 
-    // Look at the source basic block's hotness.
+    // If the source or any of the destination basic blocks are not not cold,
+    // mark the jump table as hot.
     if (!PSI->isColdBlock(&MBB, MBFI))
       Hotness = DataHotness::Hot;
 
     for (const MachineBasicBlock *MBB : MJTI.getJumpTables()[JTI].MBBs)
       if (!PSI->isColdBlock(MBB, MBFI))
         Hotness = DataHotness::Hot;
+
+    if (Hotness == DataHotness::Hot)
+      ++NumHotJumpTables;
+    else
+      ++NumColdJumpTables;
 
     MF.getJumpTableInfo()->updateJumpTableHotness(JTI, Hotness);
   }
@@ -102,8 +111,12 @@ void StaticDataSplitter::splitJumpTables(MachineFunction &MF) {
     return;
   }
 
+  // If this pass is enabled and a function doesn't have profile information,
+  // conservatively mark all jump tables as hot.
   for (size_t JTI = 0; JTI < MJTI->getJumpTables().size(); JTI++)
     MF.getJumpTableInfo()->updateJumpTableHotness(JTI, DataHotness::Hot);
+
+  NumUnknownJumpTablse += MJTI->getJumpTables().size();
 }
 
 char StaticDataSplitter::ID = 0;
@@ -116,11 +129,6 @@ INITIALIZE_PASS_DEPENDENCY(ProfileSummaryInfoWrapperPass)
 INITIALIZE_PASS_END(StaticDataSplitter, DEBUG_TYPE, "Split static data", false,
                     false)
 
-MachineFunctionPass *
-llvm::createStaticDataSplitterPass(const bool SplitJumpTable,
-                                   const bool SplitConstantPool) {
-  StaticDataSplitterOptions Options;
-  Options.SplitJumpTables = SplitJumpTable;
-  Options.SplitConstantPool = SplitConstantPool;
-  return new StaticDataSplitter(Options);
+MachineFunctionPass *llvm::createStaticDataSplitterPass() {
+  return new StaticDataSplitter();
 }
