@@ -263,6 +263,11 @@ static cl::opt<bool>
     GCEmptyBlocks("gc-empty-basic-blocks", cl::init(false), cl::Hidden,
                   cl::desc("Enable garbage-collecting empty basic blocks"));
 
+static cl::opt<bool>
+    SplitStaticData("split-static-data", cl::Hidden, cl::init(false),
+                    cl::desc("Split static data sections into hot and cold "
+                             "section ones using profile information"));
+
 /// Allow standard passes to be disabled by command line options. This supports
 /// simple binary flags that either suppress the pass or do nothing.
 /// i.e. -disable-mypass=false has no effect.
@@ -1256,7 +1261,8 @@ void TargetPassConfig::addMachinePasses() {
                "performance.\n";
       }
     }
-    addPass(createStaticDataSplitterPass());
+    if (SplitStaticData)
+      addPass(createStaticDataSplitterPass());
     addPass(createMachineFunctionSplitterPass());
   }
   // We run the BasicBlockSections pass if either we need BB sections or BB
