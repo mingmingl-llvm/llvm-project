@@ -670,6 +670,9 @@ defm lto_basic_block_address_map: BB<"lto-basic-block-address-map",
 defm lto_unique_basic_block_section_names: BB<"lto-unique-basic-block-section-names",
     "Give unique names to every basic block section for LTO",
     "Do not give unique names to every basic block section for LTO (default)">;
+defm lto_split_data_sections: BB<"lto-split-data-sections",
+    "Split a static data section into a hot section and a non-hot one",
+    "Do not split static data sections (default)">;
 defm shuffle_sections: EEq<"shuffle-sections",
   "Shuffle matched sections using the given seed before mapping them to the output sections. "
   "If -1, reverse the section order. If 0, use a random seed">,

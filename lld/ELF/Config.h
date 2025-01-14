@@ -491,6 +491,10 @@ struct Config {
   // If an input file matches a wildcard pattern, remap it to the value.
   llvm::SmallVector<std::pair<llvm::GlobPattern, llvm::StringRef>, 0>
       remapInputsWildcards;
+
+  // Propagated to TargetOptions in lto::Config.
+  // If true, emit suffix for a static data section to indicate its hotness.
+  bool ltoEmitStaticDataSectionSuffix = false;
 };
 
 // Some index properties of a symbol are stored separately in this auxiliary

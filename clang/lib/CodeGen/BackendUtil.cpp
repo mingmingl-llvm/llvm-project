@@ -441,6 +441,7 @@ static bool initTargetOptions(DiagnosticsEngine &Diags,
   }
 
   Options.EnableMachineFunctionSplitter = CodeGenOpts.SplitMachineFunctions;
+  Options.EnableDataSectionSplitting = CodeGenOpts.SplitDataSections;
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
   Options.IgnoreXCOFFVisibility = LangOpts.IgnoreXCOFFVisibility;

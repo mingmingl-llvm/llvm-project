@@ -4352,6 +4352,12 @@ defm split_machine_functions: BoolFOption<"split-machine-functions",
   NegFlag<SetFalse, [], [ClangOption], "Disable">,
   BothFlags<[], [ClangOption], " late function splitting using profile information (x86 ELF)">>;
 
+defm split_data_sections: BoolFOption<"split-data-sections",
+  CodeGenOpts<"SplitDataSections">, DefaultFalse,
+  PosFlag<SetTrue, [], [ClangOption, CC1Option], "Enable">,
+  NegFlag<SetFalse, [], [ClangOption], "Disable">,
+  BothFlags<[], [ClangOption], "Split static data sections using profile information (x86 ELF)">>;
+
 defm strict_return : BoolFOption<"strict-return",
   CodeGenOpts<"StrictReturn">, DefaultTrue,
   NegFlag<SetFalse, [], [ClangOption, CC1Option],
