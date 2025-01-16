@@ -105,6 +105,22 @@ StringRef LinkerScript::getOutputSectionName(const InputSectionBase *s) const {
     return ".text";
   }
 
+  
+  if (isSectionPrefix(".rodata", s->name)) {
+    // Map input sections' .rodata and rodata.hot into .rodata.hot in the output.
+  // Map input sections' .rodata.unlikely into .rodata in the output.
+    if (ctx.arg.zKeepTextSectionPrefix) {
+      if (isSectionPrefix(".rodata.hot", s->name)) {
+        return ".rodata.hot";
+      }
+      if (isSectionPrefix(".rodata.unlikely", s->name)) {
+        return ".rodata";
+      }
+      return ".rodata.hot";
+    }
+    return ".rodata";
+  }
+
   for (StringRef v : {".data.rel.ro", ".data",       ".rodata",
                       ".bss.rel.ro",  ".bss",        ".ldata",
                       ".lrodata",     ".lbss",       ".gcc_except_table",
