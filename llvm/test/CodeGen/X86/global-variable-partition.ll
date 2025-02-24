@@ -159,7 +159,7 @@ declare i32 @printf(ptr, ...)
 !23 = !{!"DetailedSummary", !24}
 !24 = !{!36, !40}
 !36 = !{i32 990000, i64 166, i32 73}
-!40 = !{i32 999999, i64 1, i32 1443}
+!40 = !{i32 999999, i64 3, i32 1443}
 !51 = !{!"function_entry_count", i64 100000}
 !52 = !{!"function_entry_count", i64 1}
 !53 = !{!"branch_weights", i32 1, i32 99999}

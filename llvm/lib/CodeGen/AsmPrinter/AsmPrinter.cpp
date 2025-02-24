@@ -2793,6 +2793,28 @@ void AsmPrinter::emitConstantPool() {
     if (!CPE.isMachineConstantPoolEntry())
       C = CPE.Val.ConstVal;
 
+    if (C) {
+      if (SDPI) {
+        errs() << "AsmPrinter.cpp:2814\t";
+        auto Count = SDPI->getConstantProfileCount(C);
+        if (Count) {
+          errs() << "AsmPrinter.cpp:2814\t";
+          errs() << *Count << "\n";
+          if (PSI->isHotCount(*Count)) {
+            /* errs() << "AsmPrinter.cpp:2816\t" << MF->getName() << "\t" << i
+                   << "\t";
+            C->print(errs());
+            errs() << "hot\n"; */
+          } else if (PSI->isColdCount(*Count)) {
+            /*errs() << "AsmPrinter.cpp:2817\t" << MF->getName() << "\t" << i
+                   << "\t";
+            C->print(errs());
+            errs() << "cold\n"; */
+          }
+        }
+      }
+    }
+
     MCSection *S = getObjFileLowering().getSectionForConstant(
         getDataLayout(), Kind, C, Alignment);
 

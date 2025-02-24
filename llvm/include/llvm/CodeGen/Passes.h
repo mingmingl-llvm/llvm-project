@@ -518,6 +518,10 @@ namespace llvm {
   /// printing assembly.
   ModulePass *createMachineOutlinerPass(bool RunOnAllFunctions = true);
 
+  /// This pass reads from StaticDataProfileInfoWrapperPass and annotates
+  /// the section prefix of global variables.
+  ModulePass *createStaticDataAnnotatorPass();
+
   /// This pass expands the reduction intrinsics into sequences of shuffles.
   FunctionPass *createExpandReductionsPass();
 
