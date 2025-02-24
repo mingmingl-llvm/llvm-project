@@ -68,6 +68,12 @@ public:
                                    const Constant *C,
                                    Align &Alignment) const override;
 
+  /// Similar to the function above, but append \p SectionPrefix to the section
+  /// name.
+  MCSection *getSectionForConstant(const DataLayout &DL, SectionKind Kind,
+                                   const Constant *C, Align &Alignment,
+                                   StringRef SectionPrefix) const override;
+
   MCSection *getExplicitSectionGlobal(const GlobalObject *GO, SectionKind Kind,
                                       const TargetMachine &TM) const override;
 
