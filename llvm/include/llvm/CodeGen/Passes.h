@@ -75,6 +75,10 @@ namespace llvm {
   /// into a hot and cold section using profile information.
   MachineFunctionPass *createStaticDataSplitterPass();
 
+  /// This pass reads from StaticDataProfileInfoWrapperPass and annotates
+  /// the section prefix of global variables.
+  ModulePass *createStaticDataAnnotatorPass();
+
   /// MachineFunctionPrinter pass - This pass prints out the machine function to
   /// the given stream as a debugging tool.
   MachineFunctionPass *
