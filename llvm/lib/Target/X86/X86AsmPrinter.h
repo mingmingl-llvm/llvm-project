@@ -155,6 +155,7 @@ public:
     return AsmPrinter::doInitialization(M);
   }
 
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
   bool runOnMachineFunction(MachineFunction &MF) override;
   void emitFunctionBodyStart() override;
   void emitFunctionBodyEnd() override;
