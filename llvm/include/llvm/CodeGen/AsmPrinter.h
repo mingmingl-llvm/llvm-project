@@ -18,8 +18,6 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Analysis/ProfileSummaryInfo.h"
-#include "llvm/Analysis/StaticDataProfileInfo.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/CodeGen/DwarfStringPoolEntry.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
@@ -108,10 +106,6 @@ public:
 
   /// This is a pointer to the current MachineModuleInfo.
   MachineModuleInfo *MMI = nullptr;
-
-  const StaticDataProfileInfo *SDPI = nullptr;
-
-  const ProfileSummaryInfo *PSI = nullptr;
 
   /// This is a pointer to the current MachineDominatorTree.
   MachineDominatorTree *MDT = nullptr;

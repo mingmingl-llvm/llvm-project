@@ -31,9 +31,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
-#include "llvm/ProfileData/InstrProf.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/MathExtras.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 
 using namespace llvm;
@@ -115,7 +113,6 @@ bool StaticDataSplitter::partitionStaticDataWithProfiles(MachineFunction &MF) {
 
   const TargetMachine &TM = MF.getTarget();
   MachineJumpTableInfo *MJTI = MF.getJumpTableInfo();
-  MachineConstantPool *MCP = MF.getConstantPool();
 
   // Jump table could be used by either terminating instructions or
   // non-terminating ones, so we walk all instructions and use
@@ -125,7 +122,7 @@ bool StaticDataSplitter::partitionStaticDataWithProfiles(MachineFunction &MF) {
   for (const auto &MBB : MF) {
     for (const MachineInstr &I : MBB) {
       for (const MachineOperand &Op : I.operands()) {
-        if (!Op.isJTI() && !Op.isGlobal() && !Op.isCPI())
+        if (!Op.isJTI() && !Op.isGlobal())
           continue;
 
         std::optional<uint64_t> Count = MBFI->getBlockProfileCount(&MBB);
@@ -147,7 +144,7 @@ bool StaticDataSplitter::partitionStaticDataWithProfiles(MachineFunction &MF) {
 
           if (MJTI->updateJumpTableEntryHotness(JTI, Hotness))
             ++NumChangedJumpTables;
-        } else if (Op.isGlobal()) {
+        } else {
           // Find global variables with local linkage.
           const GlobalVariable *GV =
               getLocalLinkageGlobalVariable(Op.getGlobal());
@@ -158,20 +155,6 @@ bool StaticDataSplitter::partitionStaticDataWithProfiles(MachineFunction &MF) {
               !inStaticDataSection(GV, TM))
             continue;
           SDPI->addConstantProfileCount(GV, Count);
-
-        } else if (Op.isCPI()) {
-          int CPI = Op.getIndex();
-          if (CPI == -1)
-            continue;
-
-          assert(MCP != nullptr && "Constant pool info is not available.");
-          const MachineConstantPoolEntry &CPE = MCP->getConstants()[CPI];
-
-          if (CPE.isMachineConstantPoolEntry())
-            continue;
-
-          const Constant *C = CPE.Val.ConstVal;
-          SDPI->addConstantProfileCount(C, Count);
         }
       }
     }
