@@ -104,6 +104,11 @@ public:
                                            SectionKind Kind, const Constant *C,
                                            Align &Alignment) const;
 
+  virtual MCSection *getSectionForConstant(const DataLayout &DL,
+                                           SectionKind Kind, const Constant *C,
+                                           Align &Alignment,
+                                           StringRef SectionPrefix) const;
+
   virtual MCSection *
   getSectionForMachineBasicBlock(const Function &F,
                                  const MachineBasicBlock &MBB,
