@@ -1,9 +1,27 @@
-//===---- StaticDataAnnotator-------------------------------------------*//
+//===- StaticDataAnnotator - Annotate static data's section prefix --------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+//===----------------------------------------------------------------------===//
+//
+// To reason about module-wide data hotness in a module granularity, this file
+// implements a module pass StaticDataAnnotator to work coordinately with the
+// StaticDataSplitter pass.
+//
+// The StaticDataSplitter pass is a machine function pass. It analyzes data
+// hotness based on code and adds counters in the StaticDataProfileInfo.
+// The StaticDataAnnotator pass is a module pass. It iterates global variables
+// in the module, looks up counters from StaticDataProfileInfo and sets the
+// section prefix based on profiles.
+//
+// The three-pass structure is implemented for practical reasons, to work around
+// the limitation that a module pass based on legacy pass manager cannot make
+// use of MachineBlockFrequencyInfo analysis. In the future, we can consider
+// porting the StaticDataSplitter pass to a module-pass using the new pass
+// manager framework. That way, analysis are lazily computed as opposed to
+// eagerly scheduled, and a module pass can use MachineBlockFrequencyInfo.
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/ProfileSummaryInfo.h"
