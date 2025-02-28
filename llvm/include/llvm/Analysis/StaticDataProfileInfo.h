@@ -23,22 +23,24 @@ public:
 public:
   StaticDataProfileInfo() = default;
 
-  /// Add \p Count to the profile count of the constant \p C in a saturating
-  /// way, and clamp the count to \p getInstrMaxCountValue if the result exceeds
-  /// it.
+  /// If \p Count is not nullopt, add it to the profile count of the constant \p
+  /// C in a saturating way, and clamp the count to \p getInstrMaxCountValue if
+  /// the result exceeds it. Otherwise, mark the constant as having no profile
+  /// count.
   void addConstantProfileCount(const Constant *C,
                                std::optional<uint64_t> Count);
 
   /// If \p C has a count, return it. Otherwise, return std::nullopt.
   std::optional<uint64_t> getConstantProfileCount(const Constant *C) const;
 
+  /// Return true if the constant \p C is seen at least once without profiles.
   bool hasUnknownCount(const Constant *C) const {
     return ConstantWithoutCounts.count(C);
   }
 };
 
 /// This wraps the StaticDataProfileInfo object as an immutable pass, for a
-/// backend pass to read or write the object.
+/// backend pass to operate on.
 class StaticDataProfileInfoWrapperPass : public ImmutablePass {
 public:
   static char ID;
