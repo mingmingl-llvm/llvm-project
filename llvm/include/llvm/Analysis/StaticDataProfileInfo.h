@@ -8,12 +8,12 @@
 
 namespace llvm {
 
-/// A class to hold the constants that represent static data and their profile
-/// information, and provide methods to operate on them.
+/// A class that holds the constants that represent static data and their
+/// profile information and provides methods to operate on them.
 class StaticDataProfileInfo {
 public:
-  /// Accummulate the profile count of a constant.
-  /// The constant can be a global variable or the constant pool value.
+  /// Accummulate the profile count of a constant that will be lowered to static
+  /// data sections.
   DenseMap<const Constant *, uint64_t> ConstantProfileCounts;
 
   /// Keeps track of the constants that are seen at least once without profile
@@ -45,7 +45,6 @@ public:
   StaticDataProfileInfoWrapperPass();
   bool doInitialization(Module &M) override;
   bool doFinalization(Module &M) override;
-  void print(raw_ostream &OS, const Module *M = nullptr) const override;
 
   StaticDataProfileInfo &getStaticDataProfileInfo() { return *Info; }
   const StaticDataProfileInfo &getStaticDataProfileInfo() const {

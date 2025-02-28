@@ -38,14 +38,6 @@ bool StaticDataProfileInfoWrapperPass::doFinalization(Module &M) {
   return false;
 }
 
-void StaticDataProfileInfoWrapperPass::print(raw_ostream &OS,
-                                             const Module *M) const {
-  OS << "Static data profile info:\n";
-  for (const auto &I : Info->ConstantProfileCounts) {
-    OS << "  " << I.first->getName() << ": " << I.second << "\n";
-  }
-}
-
 INITIALIZE_PASS(StaticDataProfileInfoWrapperPass, "static-data-profile-info",
                 "Static Data Profile Info", false, true)
 
