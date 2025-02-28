@@ -2,6 +2,7 @@
 #define LLVM_ANALYSIS_STATICDATAPROFILEINFO_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/Pass.h"
 
@@ -15,6 +16,10 @@ public:
   /// The constant can be a global variable or the constant pool value.
   DenseMap<const Constant *, uint64_t> ConstantProfileCounts;
 
+  /// Keeps track of the constants that are seen at least once without profile
+  /// counts.
+  DenseSet<const Constant *> ConstantWithoutCounts;
+
 public:
   StaticDataProfileInfo() = default;
 
@@ -26,6 +31,10 @@ public:
 
   /// If \p C has a count, return it. Otherwise, return std::nullopt.
   std::optional<uint64_t> getConstantProfileCount(const Constant *C) const;
+
+  bool hasUnknownCount(const Constant *C) const {
+    return ConstantWithoutCounts.count(C);
+  }
 };
 
 /// This wraps the StaticDataProfileInfo object as an immutable pass, for a

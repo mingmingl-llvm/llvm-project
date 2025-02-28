@@ -26,7 +26,6 @@ target triple = "x86_64-unknown-linux-gnu"
 ; DATA: .L.str.1
 ; DATA:    "%d\t%d\t%d\n"
 
-
 ; SYM:  .section	.data.rel.ro.hot.hot_relro_array
 ; SYM: .section	.data.hot.hot_data,"aw",@progbits
 ; SYM: .section	.bss.hot.hot_bss,"aw",@nobits
@@ -46,24 +45,31 @@ target triple = "x86_64-unknown-linux-gnu"
 ; DATA: .L.str.2:
 ; DATA:    "cold%d\t%d\t%d\n"
 
-
 ; SYM: .section	.bss.unlikely.cold_bss,"aw",@nobits
 ; SYM: .section	.data.unlikely.cold_data,"aw",@progbits
 ; SYM: .section	.data.rel.ro.unlikely.cold_relro_array,"aw",@progbits
 ; SYM: .section	.bss.unlikely.bss2,"aw",@nobits
 ; SYM: .section	.data.unlikely.data3,"aw",@progbits
+; SYM: 	.type	.Lunknown_data,@object          # @unknown_data
+; SYM: .section .data..Lunknown_data,"aw",@progbits
+; SYM: .Lunknown_data:
 
 ; UNIQ: .section	.bss.unlikely.,"aw",@nobits,unique,6
 ; UNIQ: .section	.data.unlikely.,"aw",@progbits,unique,7
 ; UNIQ: .section	.data.rel.ro.unlikely.,"aw",@progbits,unique,8
 ; UNIQ: .section	.bss.unlikely.,"aw",@nobits,unique,9
 ; UNIQ: .section	.data.unlikely.,"aw",@progbits,unique,10
+; UNIQ: .section  .data,"aw",@progbits,unique,11
 
 ; AGG: .section	.bss.unlikely.,"aw",@nobits
 ; AGG: .section	.data.unlikely.,"aw",@progbits
 ; AGG: .section	.data.rel.ro.unlikely.,"aw",@progbits
 ; AGG: .section	.bss.unlikely.,"aw",@nobits
 ; AGG: .section	.data.unlikely.,"aw",@progbits
+; .section directive is omitted for .data when -unique-section-names is false.
+; See MCSectionELF::shouldOmitSectionDirective for the implementation details.
+; AGG: .data
+; AGG: .Lunknown_data:
 
 @.str = private unnamed_addr constant [5 x i8] c"hot\09\00", align 1
 @.str.1 = private unnamed_addr constant [10 x i8] c"%d\09%d\09%d\0A\00", align 1
@@ -82,6 +88,8 @@ target triple = "x86_64-unknown-linux-gnu"
 ; COM: list.
 @bss2 = internal global i32 0
 @data3 = internal global i32 3
+
+@unknown_data = private global i32 5
 
 define void @hot_callee(i32 %0) !prof !51 {
   %2 = call i32 (ptr, ...) @printf(ptr @.str)
@@ -104,7 +112,8 @@ define void @cold_callee(i32 %0) !prof !52 {
   %6 = getelementptr inbounds [2 x ptr], ptr @cold_relro_array, i64 0, i64 %5
   %7 = load ptr, ptr %6
   %8 = load i32, ptr %7
-  %9 = call i32 (ptr, ...) @printf(ptr @.str.2, i32 %2, i32 %3, i32 %8)
+  %9 = load i32, ptr @unknown_data
+  %10 = call i32 (ptr, ...) @printf(ptr @.str.2, i32 %2, i32 %3, i32 %8, i32 %9)
   ret void
 }
 
@@ -138,6 +147,12 @@ define i32 @main(i32 %0, ptr %1) !prof !52 {
   %19 = add i32 %12, 1
   %20 = icmp eq i32 %19, 100000
   br i1 %20, label %5, label %11, !prof !53
+}
+
+define i32 @unprofiled_func(i32 %a) {
+  %b = load i32, ptr @unknown_data
+  %ret = add i32 %a, %b
+  ret i32 %ret
 }
 
 declare void @srand(i32)

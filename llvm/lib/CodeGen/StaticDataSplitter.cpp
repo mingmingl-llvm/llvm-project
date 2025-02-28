@@ -58,13 +58,16 @@ class StaticDataSplitter : public MachineFunctionPass {
   // .data.rel.ro} sections.
   bool inStaticDataSection(const GlobalVariable *GV, const TargetMachine &TM);
 
-  // Update LLVM statistics for a machine function without profiles.
-  void updateStatsWithoutProfiles(const MachineFunction &MF);
+  // Use profiles to partition static data.
+  bool partitionStaticDataWithProfiles(MachineFunction &MF);
+
   // Update LLVM statistics for a machine function with profiles.
   void updateStatsWithProfiles(const MachineFunction &MF);
 
-  // Use profiles to partition static data.
-  bool partitionStaticDataWithProfiles(MachineFunction &MF);
+  // Update LLVM statistics for a machine function without profiles.
+  void updateStatsWithoutProfiles(const MachineFunction &MF);
+
+  void annotateStaticDataWithoutProfiles(const MachineFunction &MF);
 
 public:
   static char ID;
@@ -98,6 +101,7 @@ bool StaticDataSplitter::runOnMachineFunction(MachineFunction &MF) {
                                 MF.getFunction().hasProfileData();
 
   if (!ProfileAvailable) {
+    annotateStaticDataWithoutProfiles(MF);
     updateStatsWithoutProfiles(MF);
     return false;
   }
@@ -192,6 +196,24 @@ void StaticDataSplitter::updateStatsWithProfiles(const MachineFunction &MF) {
                "A jump table is either hot or cold when profile information is "
                "available.");
         ++NumColdJumpTables;
+      }
+    }
+  }
+}
+
+void StaticDataSplitter::annotateStaticDataWithoutProfiles(
+    const MachineFunction &MF) {
+  for (const auto &MBB : MF) {
+    for (const MachineInstr &I : MBB) {
+      for (const MachineOperand &Op : I.operands()) {
+        if (!Op.isGlobal())
+          continue;
+        const GlobalVariable *GV =
+            getLocalLinkageGlobalVariable(Op.getGlobal());
+        if (!GV || GV->getName().starts_with("llvm.") ||
+            !inStaticDataSection(GV, MF.getTarget()))
+          continue;
+        SDPI->addConstantProfileCount(GV, std::nullopt);
       }
     }
   }

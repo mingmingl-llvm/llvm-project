@@ -8,8 +8,10 @@
 using namespace llvm;
 void StaticDataProfileInfo::addConstantProfileCount(
     const Constant *C, std::optional<uint64_t> Count) {
-  if (!Count)
+  if (!Count) {
+    ConstantWithoutCounts.insert(C);
     return;
+  }
   uint64_t &OriginalCount = ConstantProfileCounts[C];
   OriginalCount += llvm::SaturatingAdd(*Count, OriginalCount);
   // Clamp the count to getInstrMaxCountValue. InstrFDO reserves a few
