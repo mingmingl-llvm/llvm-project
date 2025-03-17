@@ -1175,8 +1175,11 @@ Error LTO::run(AddStreamFn AddStream, FileCache Cache) {
     if (Res.second.VisibleOutsideSummary && Res.second.Prevailing)
       GUIDPreservedSymbols.insert(GUID);
 
-    if (Res.second.ExportDynamic)
+    if (Res.second.ExportDynamic) {
+      errs() << "LTO.cpp:1179\t" << Res.second.IRName << "\t" << GUID
+             << "\t is a dynamic export symbol\n";
       DynamicExportSymbols.insert(GUID);
+    }
 
     GUIDPrevailingResolutions[GUID] =
         Res.second.Prevailing ? PrevailingType::Yes : PrevailingType::No;

@@ -256,6 +256,9 @@ void BitcodeCompiler::add(BitcodeFile &f) {
     // referenced by a shared library not visible to the linker.
     r.ExportDynamic = sym->computeBinding(ctx) != STB_LOCAL &&
                       (ctx.arg.exportDynamic || sym->isExported);
+    errs() << "ELF/LTO.cpp:259\t" << f.getName() << " " << sym->getName() << " "
+           << r.Prevailing << " " << r.VisibleToRegularObj << " "
+           << r.ExportDynamic << "\n";
     const auto *dr = dyn_cast<Defined>(sym);
     r.FinalDefinitionInLinkageUnit =
         (isExec || sym->visibility() != STV_DEFAULT) && dr &&

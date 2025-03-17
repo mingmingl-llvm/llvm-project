@@ -320,14 +320,18 @@ template <class ELFT> static void doParseFile(Ctx &ctx, InputFile *file) {
     Msg(ctx) << file;
 
   if (file->kind() == InputFile::ObjKind) {
+    errs() << "IF.cpp:323\t" << file->getName() << "\n";
     ctx.objectFiles.push_back(cast<ELFFileBase>(file));
     cast<ObjFile<ELFT>>(file)->parse();
   } else if (auto *f = dyn_cast<SharedFile>(file)) {
+    errs() << "IF.cpp:327\t" << file->getName() << "\n";
     f->parse<ELFT>();
   } else if (auto *f = dyn_cast<BitcodeFile>(file)) {
+    errs() << "IF.cpp:330\t" << file->getName() << "\n";
     ctx.bitcodeFiles.push_back(f);
     f->parse();
   } else {
+    errs() << "IF.cpp:334\t" << file->getName() << "\n";
     ctx.binaryFiles.push_back(cast<BinaryFile>(file));
     cast<BinaryFile>(file)->parse();
   }

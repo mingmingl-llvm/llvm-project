@@ -1150,6 +1150,7 @@ bool DevirtIndex::tryFindVirtualCallTargets(
     const GlobalVarSummary *VS = nullptr;
     bool LocalFound = false;
     for (const auto &S : P.VTableVI.getSummaryList()) {
+      errs() << "WPD.cpp:1153\t" << P.VTableVI << "\n";
       if (GlobalValue::isLocalLinkage(S->linkage())) {
         if (LocalFound)
           return false;
@@ -1168,8 +1169,10 @@ bool DevirtIndex::tryFindVirtualCallTargets(
         VS = CurVS;
         // We cannot perform whole program devirtualization analysis on a vtable
         // with public LTO visibility.
-        if (VS->getVCallVisibility() == GlobalObject::VCallVisibilityPublic)
+        if (VS->getVCallVisibility() == GlobalObject::VCallVisibilityPublic) {
+          errs() << "WPD.cpp:1173\n";
           return false;
+        }
       }
     }
     // There will be no VS if all copies are available_externally having no
@@ -1185,6 +1188,7 @@ bool DevirtIndex::tryFindVirtualCallTargets(
       if (mustBeUnreachableFunction(VTP.FuncVI))
         continue;
 
+      errs() << "WPD.cpp:11n91\t" << VTP.FuncVI << "\n";
       TargetsForSlot.push_back(VTP.FuncVI);
     }
   }
@@ -1379,14 +1383,20 @@ bool DevirtIndex::trySingleImplDevirt(MutableArrayRef<ValueInfo> TargetsForSlot,
   // See if the program contains a single implementation of this virtual
   // function.
   auto TheFn = TargetsForSlot[0];
-  for (auto &&Target : TargetsForSlot)
-    if (TheFn != Target)
+  for (auto &&Target : TargetsForSlot) {
+    errs() << "WPD.cpp:1387\t" << Target << "\n";
+    if (TheFn != Target) {
+      errs() << "WPD.cpp:1389\t" << Target << "\n";
       return false;
+    }
+  }
 
   // Don't devirtualize if we don't have target definition.
   auto Size = TheFn.getSummaryList().size();
-  if (!Size)
+  if (!Size) {
+    errs() << "WPD.cpp:1396\t" << TheFn << "\n";
     return false;
+  }
 
   // Don't devirtualize function if we're told to skip it
   // in -wholeprogramdevirt-skip.
@@ -1429,6 +1439,7 @@ bool DevirtIndex::trySingleImplDevirt(MutableArrayRef<ValueInfo> TargetsForSlot,
   // index (e.g. llvm-lto). However, WPD is not supported/invoked for the
   // legacy LTO API anyway.
   assert(!Res->SingleImplName.empty());
+  errs() << "WPD.cpp:1436\t" << Res->SingleImplName << "\n";
 
   return true;
 }
@@ -2545,6 +2556,8 @@ void DevirtIndex::run() {
     WholeProgramDevirtResolution *Res =
         &ExportSummary.getTypeIdSummary(S.first.TypeID)
              ->WPDRes[S.first.ByteOffset];
+    errs() << "WPD.cpp:2551\t" << S.first.TypeID << " " << S.first.ByteOffset
+           << "\n";
     if (tryFindVirtualCallTargets(TargetsForSlot, *TidSummary,
                                   S.first.ByteOffset)) {
 
