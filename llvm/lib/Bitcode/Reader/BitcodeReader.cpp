@@ -7601,18 +7601,24 @@ void ModuleSummaryIndexBitcodeReader::parseTypeIdCompatibleVtableInfo(
     TypeIdCompatibleVtableInfo &TypeId) {
   uint64_t Offset = Record[Slot++];
   ValueInfo Callee = std::get<0>(getValueInfoFromValueId(Record[Slot++]));
+  errs() << "\tBR.cpp:7604\t" << Offset << "\t" << Callee << "\n";
   TypeId.push_back({Offset, Callee});
 }
 
 void ModuleSummaryIndexBitcodeReader::parseTypeIdCompatibleVtableSummaryRecord(
     ArrayRef<uint64_t> Record) {
   size_t Slot = 0;
+  errs() << "BR.cpp:7610\t"
+         << StringRef(Strtab.data() + Record[Slot],
+                      static_cast<size_t>(Record[Slot + 1]))
+         << "\n";
   TypeIdCompatibleVtableInfo &TypeId =
       TheIndex.getOrInsertTypeIdCompatibleVtableSummary(
           {Strtab.data() + Record[Slot],
            static_cast<size_t>(Record[Slot + 1])});
   Slot += 2;
 
+  errs() << "BR.cpp:7617\t" << Slot << "\t" << Record.size() << "\n";
   while (Slot < Record.size())
     parseTypeIdCompatibleVtableInfo(Record, Slot, TypeId);
 }
@@ -7913,12 +7919,15 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
         uint64_t Offset = Record[++I];
         VTableFuncs.push_back({Callee, Offset});
       }
+
       auto VS =
           std::make_unique<GlobalVarSummary>(Flags, GVF, std::move(Refs));
       VS->setModulePath(getThisModule()->first());
       VS->setVTableFuncs(VTableFuncs);
       auto GUID = getValueInfoFromValueId(ValueID);
       VS->setOriginalName(std::get<1>(GUID));
+      errs() << "BR.cpp:7916\t" << VTableFuncs.size() << "\t"
+             << std::get<0>(GUID) << "\t" << std::get<1>(GUID) << "\n";
       TheIndex.addGlobalValueSummary(std::get<0>(GUID), std::move(VS));
       break;
     }

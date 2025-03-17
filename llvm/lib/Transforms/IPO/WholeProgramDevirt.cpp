@@ -1136,7 +1136,10 @@ bool DevirtModule::tryFindVirtualCallTargets(
 bool DevirtIndex::tryFindVirtualCallTargets(
     std::vector<ValueInfo> &TargetsForSlot,
     const TypeIdCompatibleVtableInfo TIdInfo, uint64_t ByteOffset) {
+  errs() << "WPD.cpp:11n39\t" << TIdInfo.size() << "\n";
   for (const TypeIdOffsetVtableInfo &P : TIdInfo) {
+    errs() << "WPD.cpp:1141\t" << P.VTableVI << "\t" << P.AddressPointOffset
+           << "\n";
     // Find a representative copy of the vtable initializer.
     // We can have multiple available_externally, linkonce_odr and weak_odr
     // vtable initializers. We can also have multiple external vtable
@@ -1152,11 +1155,15 @@ bool DevirtIndex::tryFindVirtualCallTargets(
     for (const auto &S : P.VTableVI.getSummaryList()) {
       errs() << "WPD.cpp:1153\t" << P.VTableVI << "\n";
       if (GlobalValue::isLocalLinkage(S->linkage())) {
-        if (LocalFound)
+        if (LocalFound) {
+          errs() << "WPD.cpp:1157\n";
           return false;
+        }
         LocalFound = true;
       }
+
       auto *CurVS = cast<GlobalVarSummary>(S->getBaseObject());
+      errs() << "WPD.cpp:1164\t" << CurVS->vTableFuncs().size() << "\n";
       if (!CurVS->vTableFuncs().empty() ||
           // Previously clang did not attach the necessary type metadata to
           // available_externally vtables, in which case there would not
@@ -1175,13 +1182,22 @@ bool DevirtIndex::tryFindVirtualCallTargets(
         }
       }
     }
+
+    if (VS)
+      errs() << "WPD.cpp:1185\t" << VS->vTableFuncs().size() << "\t"
+             << VS->isLive() << "\n";
     // There will be no VS if all copies are available_externally having no
     // type metadata. In that case we can't safely perform WPD.
-    if (!VS)
+    if (!VS) {
+      errs() << "WPD.cpp:1181\n";
       return false;
+    }
     if (!VS->isLive())
       continue;
+    errs() << "WPD.cpp:11n90\t" << VS->vTableFuncs().size() << "\n";
     for (auto VTP : VS->vTableFuncs()) {
+      errs() << "WPD.cpp:11n92\t" << VTP.FuncVI << "\t" << VTP.VTableOffset
+             << "\t" << P.AddressPointOffset << "\t" << ByteOffset << "\n";
       if (VTP.VTableOffset != P.AddressPointOffset + ByteOffset)
         continue;
 
@@ -1192,6 +1208,8 @@ bool DevirtIndex::tryFindVirtualCallTargets(
       TargetsForSlot.push_back(VTP.FuncVI);
     }
   }
+
+  errs() << "WPD.cpp:1197\t" << TargetsForSlot.size() << "\n";
 
   // Give up if we couldn't find any targets.
   return !TargetsForSlot.empty();

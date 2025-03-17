@@ -1316,8 +1316,10 @@ Error LTO::runRegularLTO(AddStreamFn AddStream) {
   // This returns true when the name is local or not defined. Locals are
   // expected to be handled separately.
   auto IsVisibleToRegularObj = [&](StringRef name) {
+    errs() << "LTO.cpp:13n19\t" << name << "\n";
     auto It = GlobalResolutions->find(name);
-    return (It == GlobalResolutions->end() || It->second.VisibleOutsideSummary);
+    return (It == GlobalResolutions->end() ||
+            It->second.VisibleOutsideSummary); // || It->second.ExportDynamic);
   };
 
   // If allowed, upgrade public vcall visibility metadata to linkage unit
@@ -1901,14 +1903,19 @@ Error LTO::runThinLTO(AddStreamFn AddStream, FileCache Cache,
   // upgraded because they correspond to typeIDs outside of index-based
   // WPD info.
   DenseSet<GlobalValue::GUID> VisibleToRegularObjSymbols;
+  errs() << "LTO.cpp:1906\t" << WholeProgramVisibilityEnabledInLTO << "\t"
+         << Conf.ValidateAllVtablesHaveTypeInfos << "\n";
   if (WholeProgramVisibilityEnabledInLTO &&
       Conf.ValidateAllVtablesHaveTypeInfos) {
     // This returns true when the name is local or not defined. Locals are
     // expected to be handled separately.
     auto IsVisibleToRegularObj = [&](StringRef name) {
+      errs() << "LTO.cpp:19n11\t" << name << "\n";
       auto It = GlobalResolutions->find(name);
+      if (It != GlobalResolutions->end())
+        errs() << "LTO.cpp:19n13\t" << It->second.VisibleOutsideSummary << "\t" << It->second.ExportDynamic << "\n";
       return (It == GlobalResolutions->end() ||
-              It->second.VisibleOutsideSummary);
+              It->second.VisibleOutsideSummary); //|| It->second.ExportDynamic);
     };
 
     getVisibleToRegularObjVtableGUIDs(ThinLTO.CombinedIndex,

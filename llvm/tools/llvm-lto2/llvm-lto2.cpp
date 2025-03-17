@@ -114,6 +114,7 @@ static cl::list<std::string> SymbolResolutions(
              "     runtime and is known to be in this linkage unit\n"
              " x - externally visible: the definition of this symbol is\n"
              "     visible outside of the LTO unit\n"
+             " d - export dynamic: the symbol is exported as a dynamic symbol\n"
              "A resolution for each symbol must be specified"));
 
 static cl::opt<std::string> OverrideTriple(
@@ -257,6 +258,8 @@ static int run(int argc, char **argv) {
         Res.VisibleToRegularObj = true;
       else if (C == 'r')
         Res.LinkerRedefined = true;
+      else if (C == 'd')
+        Res.ExportDynamic= true;
       else {
         llvm::errs() << "invalid character " << C << " in resolution: " << R
                      << '\n';
