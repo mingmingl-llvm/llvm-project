@@ -145,7 +145,6 @@ static cl::opt<unsigned>
 
 static cl::opt<bool>
     PrintSummaryDevirt("wholeprogramdevirt-print-index-based", cl::Hidden,
-                       cl::init(true),
                        cl::desc("Print index-based devirtualization messages"));
 
 /// Provide a way to force enable whole program visibility in tests.
@@ -838,9 +837,7 @@ typeIDVisibleToRegularObj(StringRef TypeID,
   // type info (_ZTI). To catch this case we query using the type info
   // symbol corresponding to the TypeID.
   std::string typeInfo = ("_ZTI" + TypeID).str();
-  auto Res = IsVisibleToRegularObj(typeInfo);
-  errs() << "WPD.cpp:8n41\t" << typeInfo << "\t" << Res << "\n";
-  return Res;
+  return IsVisibleToRegularObj(typeInfo);
 }
 
 static bool
@@ -920,14 +917,9 @@ void llvm::getVisibleToRegularObjVtableGUIDs(
     DenseSet<GlobalValue::GUID> &VisibleToRegularObjSymbols,
     function_ref<bool(StringRef)> IsVisibleToRegularObj) {
   for (const auto &typeID : Index.typeIdCompatibleVtableMap()) {
-    errs() << "WPD.cpp:918\t" << typeID.first << "\n";
-    if (typeIDVisibleToRegularObj(typeID.first, IsVisibleToRegularObj)) {
-      errs() << "WPD.cpp:921\t" << typeID.first << "\n";
-      for (const TypeIdOffsetVtableInfo &P : typeID.second) {
-        errs() << "\tWPD.cpp:926\t" << P.VTableVI << "\n";
+    if (typeIDVisibleToRegularObj(typeID.first, IsVisibleToRegularObj))
+      for (const TypeIdOffsetVtableInfo &P : typeID.second)
         VisibleToRegularObjSymbols.insert(P.VTableVI.getGUID());
-      }
-    }
   }
 }
 
@@ -1158,7 +1150,6 @@ bool DevirtIndex::tryFindVirtualCallTargets(
     const GlobalVarSummary *VS = nullptr;
     bool LocalFound = false;
     for (const auto &S : P.VTableVI.getSummaryList()) {
-      errs() << "WPD.cpp:1153\t" << P.VTableVI << "\n";
       if (GlobalValue::isLocalLinkage(S->linkage())) {
         if (LocalFound)
           return false;
@@ -1177,15 +1168,9 @@ bool DevirtIndex::tryFindVirtualCallTargets(
         VS = CurVS;
         // We cannot perform whole program devirtualization analysis on a vtable
         // with public LTO visibility.
-        if (VS->getVCallVisibility() == GlobalObject::VCallVisibilityPublic) {
-          errs() << "WPD.cpp:1180\t" << VS->getVCallVisibility() << "\n";
+        if (VS->getVCallVisibility() == GlobalObject::VCallVisibilityPublic)
           return false;
-        }
       }
-    }
-    if (VS) {
-      errs() << "WPD.cpp:1183\t" << VS->isLive() << "\t"
-             << VS->vTableFuncs().size() << "\n";
     }
     // There will be no VS if all copies are available_externally having no
     // type metadata. In that case we can't safely perform WPD.
@@ -1194,23 +1179,15 @@ bool DevirtIndex::tryFindVirtualCallTargets(
     if (!VS->isLive())
       continue;
     for (auto VTP : VS->vTableFuncs()) {
-      errs() << "WPD.cpp:1196\t" << VTP.FuncVI << "\n";
-      errs() << "WPD.cpp:1190\t" << VTP.VTableOffset << "\t" << ByteOffset
-             << "\t" << P.AddressPointOffset << "\n";
       if (VTP.VTableOffset != P.AddressPointOffset + ByteOffset)
         continue;
 
-      if (mustBeUnreachableFunction(VTP.FuncVI)) {
-        errs() << "WPD.cpp:12n02\t" << "mustbeunreachable\n";
+      if (mustBeUnreachableFunction(VTP.FuncVI))
         continue;
-      }
 
-      errs() << "WPD.cpp:1198\t" << VTP.FuncVI << "\n";
       TargetsForSlot.push_back(VTP.FuncVI);
     }
   }
-
-  errs() << "WPD.cpp:1212\t" << TargetsForSlot.size() << "\n";
 
   // Give up if we couldn't find any targets.
   return !TargetsForSlot.empty();
@@ -1402,11 +1379,9 @@ bool DevirtIndex::trySingleImplDevirt(MutableArrayRef<ValueInfo> TargetsForSlot,
   // See if the program contains a single implementation of this virtual
   // function.
   auto TheFn = TargetsForSlot[0];
-  for (auto &&Target : TargetsForSlot) {
-    errs() << "WPD.cpp:1405\t" << TheFn << "\t" << Target << "\n";
+  for (auto &&Target : TargetsForSlot)
     if (TheFn != Target)
       return false;
-  }
 
   // Don't devirtualize if we don't have target definition.
   auto Size = TheFn.getSummaryList().size();
@@ -2302,7 +2277,6 @@ bool DevirtModule::mustBeUnreachableFunction(
 }
 
 bool DevirtModule::run() {
-  errs() << "Running WholeProgramDevirt::DevirtModule::run\n";
   // If only some of the modules were split, we cannot correctly perform
   // this transformation. We already checked for the presense of type tests
   // with partially split modules during the thin link, and would have emitted

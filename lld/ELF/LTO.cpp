@@ -248,14 +248,6 @@ void BitcodeCompiler::add(BitcodeFile &f) {
     // 4) Symbols that are defined in bitcode files and used for dynamic
     //    linking.
     // 5) Symbols that will be referenced after linker wrapping is performed.
-    errs() << "ELF/LTO.cpp:251\t" << sym->getName() << "\t"
-           << "relocatable " << ctx.arg.relocatable << "\t"
-           << " used-in-regular-obj " << (sym->isUsedInRegularObj ? 1 : 0)
-           << "\t"
-           << "start-stop " << usedStartStop.count(objSym.getSectionName())
-           << "\t" << " prevailing " << (r.Prevailing ? 1 : 0) << "\t"
-           << "exported " << (sym->isExported ? 1 : 0) << "\t"
-           << " reference-after-wrap " << sym->referencedAfterWrap << "\n";
     r.VisibleToRegularObj = ctx.arg.relocatable || sym->isUsedInRegularObj ||
                             sym->referencedAfterWrap ||
                             (r.Prevailing && sym->isExported) ||
@@ -264,8 +256,6 @@ void BitcodeCompiler::add(BitcodeFile &f) {
     // referenced by a shared library not visible to the linker.
     r.ExportDynamic = sym->computeBinding(ctx) != STB_LOCAL &&
                       (ctx.arg.exportDynamic || sym->isExported);
-    errs() << "ELF/LTO.cpp:264\t" << sym->getName() << "\t"
-           << r.VisibleToRegularObj << "\t" << r.ExportDynamic << "\n";
     const auto *dr = dyn_cast<Defined>(sym);
     r.FinalDefinitionInLinkageUnit =
         (isExec || sym->visibility() != STV_DEFAULT) && dr &&
