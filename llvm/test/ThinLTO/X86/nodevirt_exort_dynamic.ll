@@ -20,14 +20,37 @@
 ; RUN:   -r=summary.o,_ZN8DerivedN5printEv,px \
 ; RUN:   -r=summary.o,_ZN4BaseC2Ev, \
 ; RUN:   -r=summary.o,_ZTS4Base, \
-; RUN:   -r=summary.o,_ZTV8DerivedN,px \
-; RUN:   -r=summary.o,_ZTI8DerivedN,px \
+; RUN:   -r=summary.o,_ZTV8DerivedN,p \
+; RUN:   -r=summary.o,_ZTI8DerivedN,p \
 ; RUN:   -r=summary.o,_ZTI4Base, \
-; RUN:   -r=summary.o,_ZTS8DerivedN,px \
+; RUN:   -r=summary.o,_ZTS8DerivedN,p \
 ; RUN:   -r=summary.o,_ZTI7Derived, \
 ; RUN:   -r=summary.o,_ZTV4Base 2>&1 | FileCheck %s --check-prefix=REMARK
 
 ; REMARK: single-impl: devirtualized a call to _ZN8DerivedN5printEv 
+
+
+; Index based WPD
+; RUN: llvm-lto2 run summary.o -save-temps -pass-remarks=. \
+; RUN:   -o tmp \
+; RUN:   -r=summary.o,_Z6getPtri,px \
+; RUN:   -r=summary.o,__cxa_pure_virtual, \
+; RUN:   -r=summary.o,_Znwm, \
+; RUN:   -r=summary.o,_ZN8DerivedNC2Ev,x \
+; RUN:   -r=summary.o,main,px \
+; RUN:   -r=summary.o,_Z6createi, \
+; RUN:   -r=summary.o,_ZN4Base8dispatchEv,px \
+; RUN:   -r=summary.o,_ZdlPvm, \
+; RUN:   -r=summary.o,_ZN7DerivedC2Ev, \
+; RUN:   -r=summary.o,_ZN8DerivedN5printEv,px \
+; RUN:   -r=summary.o,_ZN4BaseC2Ev, \
+; RUN:   -r=summary.o,_ZTS4Base, \
+; RUN:   -r=summary.o,_ZTV8DerivedN,p \
+; RUN:   -r=summary.o,_ZTI8DerivedN,p \
+; RUN:   -r=summary.o,_ZTI4Base, \
+; RUN:   -r=summary.o,_ZTS8DerivedN,p \
+; RUN:   -r=summary.o,_ZTI7Derived,d \
+; RUN:   -r=summary.o,_ZTV4Base 2>&1 | FileCheck %s --implicit-check-not='single-impl: devirtualized a call to'
 
 source_filename = "main.cc"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
@@ -63,7 +86,6 @@ $_ZTS4Base = comdat any
 @.str = private unnamed_addr constant [10 x i8] c"DerivedN\0A\00", align 1
 
 @llvm.used = appending global [1 x ptr] [ptr @main], section "llvm.metadata"
-
 
 ; Function Attrs: mustprogress noinline optnone uwtable
 define hidden void @_ZN4Base8dispatchEv(ptr noundef nonnull align 8 dereferenceable(8) %this) #0 align 2 !dbg !18 !type !22 {
@@ -213,7 +235,7 @@ attributes #11 = { builtin nounwind }
 !3 = !{i64 16, !"_ZTSM7DerivedFvvE.virtual"}
 !4 = !{i64 16, !"_ZTS8DerivedN"}
 !5 = !{i64 16, !"_ZTSM8DerivedNFvvE.virtual"}
-!6 = !{i64 1}
+!6 = !{i64 0}
 !7 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus_14, file: !8, producer: "clang version 21.0.0git (https://github.com/mingmingl-llvm/llvm-project.git 61614d7950e413b4a69a39989aabe578423eb36b)", isOptimized: true, runtimeVersion: 0, emissionKind: NoDebug, splitDebugInlining: false, nameTableKind: None)
 !8 = !DIFile(filename: "main.cc", directory: "/usr/local/google/home/mingmingl/llvm-import-dec/llvm-project/build")
 !9 = !{i32 2, !"Debug Info Version", i32 3}

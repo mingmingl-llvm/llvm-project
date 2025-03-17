@@ -1927,8 +1927,10 @@ Error LTO::runThinLTO(AddStreamFn AddStream, FileCache Cache,
         errs() << "false\n";
       }
       // || It->second.ExportDynamic
-      return (It == GlobalResolutions->end() ||
-              It->second.VisibleOutsideSummary);
+      auto Res = (It == GlobalResolutions->end() ||
+                  It->second.VisibleOutsideSummary || It->second.ExportDynamic);
+      errs() << "\tLTO.cpp:1914\t" << name << "\t" << Res << "\n";
+      return Res;
     };
 
     for (auto VisibleGUID : VisibleToRegularObjSymbols)
