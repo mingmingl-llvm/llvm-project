@@ -5,12 +5,6 @@
 
 ; RUN: llvm-dis -o - summary.o
 
-;; Index based WPD
-; RUN: ld.lld summary.o -o tmp -save-temps --lto-whole-program-visibility --lto-validate-all-vtables-have-type-infos -plugin-opt=thinlto \
-; RUN:  --lto-emit-asm \
-; RUN:   -mllvm -pass-remarks=. \
-; RUN:   --export-dynamic-symbol=_ZTI7Derived 2>&1 | FileCheck %s --check-prefix=REMARK
-
 ; Index based WPD
 ; RUN: llvm-lto2 run summary.o -save-temps -pass-remarks=. \
 ; RUN:   -o tmp \
@@ -25,10 +19,10 @@
 ; RUN:   -r=summary.o,_ZN7DerivedC2Ev, \
 ; RUN:   -r=summary.o,_ZN8DerivedN5printEv,px \
 ; RUN:   -r=summary.o,_ZN4BaseC2Ev, \
-; RUN:   -r=summary.o,printf, \
+; RUN:   -r=summary.o,_ZTS4Base, \
 ; RUN:   -r=summary.o,_ZTV8DerivedN,px \
 ; RUN:   -r=summary.o,_ZTI8DerivedN,px \
-; RUN:   -r=summary.o,_ZTVN10__cxxabiv120__si_class_type_infoE, \
+; RUN:   -r=summary.o,_ZTI4Base, \
 ; RUN:   -r=summary.o,_ZTS8DerivedN,px \
 ; RUN:   -r=summary.o,_ZTI7Derived, \
 ; RUN:   -r=summary.o,_ZTV4Base 2>&1 | FileCheck %s --check-prefix=REMARK

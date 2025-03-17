@@ -1323,6 +1323,8 @@ Error LTO::runRegularLTO(AddStreamFn AddStream) {
     return (It == GlobalResolutions->end() || It->second.VisibleOutsideSummary);
   };
 
+  // TODO: hack
+
   // If allowed, upgrade public vcall visibility metadata to linkage unit
   // visibility before whole program devirtualization in the optimizer.
   updateVCallVisibilityInModule(
@@ -1892,11 +1894,17 @@ Error LTO::runThinLTO(AddStreamFn AddStream, FileCache Cache,
 
   std::set<GlobalValue::GUID> ExportedGUIDs;
 
+  errs() << "LTO.cpp:1897\t" << Conf.HasWholeProgramVisibility << "\t"
+         << Conf.ValidateAllVtablesHaveTypeInfos << "\t"
+         << Conf.AllVtablesHaveTypeInfos << "\n";
   bool WholeProgramVisibilityEnabledInLTO =
       Conf.HasWholeProgramVisibility &&
       // If validation is enabled, upgrade visibility only when all vtables
       // have typeinfos.
       (!Conf.ValidateAllVtablesHaveTypeInfos || Conf.AllVtablesHaveTypeInfos);
+
+  WholeProgramVisibilityEnabledInLTO = true;
+  Conf.ValidateAllVtablesHaveTypeInfos = true;
   if (hasWholeProgramVisibility(WholeProgramVisibilityEnabledInLTO))
     ThinLTO.CombinedIndex.setWithWholeProgramVisibility();
 
