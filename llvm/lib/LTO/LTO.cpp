@@ -684,12 +684,18 @@ void LTO::addModuleToGlobalRes(ArrayRef<InputFile::Symbol> Syms,
       // First recorded reference, save the current partition.
       GlobalRes.Partition = Partition;
 
+    errs() << "\tLTO.cpp:687\t" << GlobalRes.IRName << "\t"
+           << Res.VisibleToRegularObj << "\t" << Sym.isUsed() << "\t"
+           << InSummary << "\n";
     // Flag as visible outside of summary if visible from a regular object or
     // from a module that does not have a summary.
     GlobalRes.VisibleOutsideSummary |=
         (Res.VisibleToRegularObj || Sym.isUsed() || !InSummary);
 
     GlobalRes.ExportDynamic |= Res.ExportDynamic;
+    errs() << "\tLTO.cpp:696\t" << GlobalRes.IRName << "\t"
+           << GlobalRes.VisibleOutsideSummary << "\t" << GlobalRes.ExportDynamic
+           << "\n";
   }
 }
 
@@ -1904,9 +1910,21 @@ Error LTO::runThinLTO(AddStreamFn AddStream, FileCache Cache,
     // expected to be handled separately.
     auto IsVisibleToRegularObj = [&](StringRef name) {
       auto It = GlobalResolutions->find(name);
+      errs() << "\tLTO.cpp:1907\t" << name << "\t";
+      if (It != GlobalResolutions->end()) {
+        errs() << It->second.VisibleOutsideSummary << "\t"
+               << It->second.ExportDynamic << "\t" << It->second.Partition
+               << "\n";
+      } else {
+        errs() << "false\n";
+      }
+      // || It->second.ExportDynamic
       return (It == GlobalResolutions->end() ||
               It->second.VisibleOutsideSummary);
     };
+
+    for (auto VisibleGUID : VisibleToRegularObjSymbols)
+      errs() << "VisibleGUID: " << VisibleGUID << "\n";
 
     getVisibleToRegularObjVtableGUIDs(ThinLTO.CombinedIndex,
                                       VisibleToRegularObjSymbols,
