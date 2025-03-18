@@ -1900,10 +1900,19 @@ Error LTO::runThinLTO(AddStreamFn AddStream, FileCache Cache,
   DenseSet<GlobalValue::GUID> VisibleToRegularObjSymbols;
   if (WholeProgramVisibilityEnabledInLTO &&
       Conf.ValidateAllVtablesHaveTypeInfos) {
+    errs() << "LTO.cpp:1903\n";
     // This returns true when the name is local or not defined. Locals are
     // expected to be handled separately.
     auto IsVisibleToRegularObj = [&](StringRef name) {
       auto It = GlobalResolutions->find(name);
+      if (It != GlobalResolutions->end()) {
+        errs() << "lto.cpp:1908\t" << name << "\t"
+               << It->second.VisibleOutsideSummary << "\t"
+               << It->second.ExportDynamic << "\n";
+      } else {
+        errs() << "lto.cpp:1912\t" << name << "\t"
+               << "not found\n";
+      }
       return (It == GlobalResolutions->end() ||
               It->second.VisibleOutsideSummary || It->second.ExportDynamic);
     };

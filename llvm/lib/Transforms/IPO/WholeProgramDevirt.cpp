@@ -145,6 +145,7 @@ static cl::opt<unsigned>
 
 static cl::opt<bool>
     PrintSummaryDevirt("wholeprogramdevirt-print-index-based", cl::Hidden,
+                       cl::init(true),
                        cl::desc("Print index-based devirtualization messages"));
 
 /// Provide a way to force enable whole program visibility in tests.
@@ -948,6 +949,8 @@ void llvm::updateVCallVisibilityInIndex(
       // already been marked in clang so are unaffected.
       if (VisibleToRegularObjSymbols.count(P.first))
         continue;
+      errs() << "Upgrading vtable visibility to linkage unit for GUID "
+             << P.first << "\n";
       GVar->setVCallVisibility(GlobalObject::VCallVisibilityLinkageUnit);
     }
   }
@@ -1150,6 +1153,7 @@ bool DevirtIndex::tryFindVirtualCallTargets(
     const GlobalVarSummary *VS = nullptr;
     bool LocalFound = false;
     for (const auto &S : P.VTableVI.getSummaryList()) {
+      errs() << "WPD.cpp\t" << P.VTableVI << "\n";
       if (GlobalValue::isLocalLinkage(S->linkage())) {
         if (LocalFound)
           return false;
@@ -1168,9 +1172,16 @@ bool DevirtIndex::tryFindVirtualCallTargets(
         VS = CurVS;
         // We cannot perform whole program devirtualization analysis on a vtable
         // with public LTO visibility.
-        if (VS->getVCallVisibility() == GlobalObject::VCallVisibilityPublic)
+        if (VS->getVCallVisibility() == GlobalObject::VCallVisibilityPublic) {
+          errs() << "WPD.cpp:1176\tskip since vcall visiblity is public for "
+                 << P.VTableVI << "\n";
           return false;
+        }
       }
+    }
+    if (VS) {
+      errs() << "WPD.cpp\t" << VS->getVCallVisibility() << "\t" << VS->isLive()
+             << "\t" << VS->vTableFuncs().size() << "\n";
     }
     // There will be no VS if all copies are available_externally having no
     // type metadata. In that case we can't safely perform WPD.
@@ -1185,6 +1196,7 @@ bool DevirtIndex::tryFindVirtualCallTargets(
       if (mustBeUnreachableFunction(VTP.FuncVI))
         continue;
 
+      errs() << "WPD.cpp:1195\t" << VTP.FuncVI << "\n";
       TargetsForSlot.push_back(VTP.FuncVI);
     }
   }
@@ -1379,12 +1391,16 @@ bool DevirtIndex::trySingleImplDevirt(MutableArrayRef<ValueInfo> TargetsForSlot,
   // See if the program contains a single implementation of this virtual
   // function.
   auto TheFn = TargetsForSlot[0];
-  for (auto &&Target : TargetsForSlot)
+  for (auto &&Target : TargetsForSlot) {
+    errs() << "WPD.cpp:trySingleImplDevirt\t" << TheFn << "\t" << Target
+           << "\n";
     if (TheFn != Target)
       return false;
+  }
 
   // Don't devirtualize if we don't have target definition.
   auto Size = TheFn.getSummaryList().size();
+  errs() << "WPD.cpp:1400\t" << Size << "\n";
   if (!Size)
     return false;
 
@@ -1396,12 +1412,16 @@ bool DevirtIndex::trySingleImplDevirt(MutableArrayRef<ValueInfo> TargetsForSlot,
   // If the summary list contains multiple summaries where at least one is
   // a local, give up, as we won't know which (possibly promoted) name to use.
   for (const auto &S : TheFn.getSummaryList())
-    if (GlobalValue::isLocalLinkage(S->linkage()) && Size > 1)
+    if (GlobalValue::isLocalLinkage(S->linkage()) && Size > 1) {
+      errs() << "WPD.cpp:1412\n";
       return false;
+    }
 
   // Collect functions devirtualized at least for one call site for stats.
-  if (PrintSummaryDevirt || AreStatisticsEnabled())
+  if (PrintSummaryDevirt || AreStatisticsEnabled()) {
+    errs() << "WPD.cpp:1416\t" << TheFn << "\n";
     DevirtTargets.insert(TheFn);
+  }
 
   auto &S = TheFn.getSummaryList()[0];
   bool IsExported = AddCalls(SlotInfo, TheFn);
@@ -1425,6 +1445,7 @@ bool DevirtIndex::trySingleImplDevirt(MutableArrayRef<ValueInfo> TargetsForSlot,
   } else
     Res->SingleImplName = std::string(TheFn.name());
 
+  errs() << "WPD.cpp:1440\t" << Res->SingleImplName << "\n";
   // Name will be empty if this thin link driven off of serialized combined
   // index (e.g. llvm-lto). However, WPD is not supported/invoked for the
   // legacy LTO API anyway.
