@@ -778,6 +778,7 @@ Error LTO::addModule(InputFile &Input, unsigned ModI,
 
   bool IsThinLTO = LTOInfo->IsThinLTO && (LTOMode != LTOK_UnifiedRegular);
 
+  errs() << "LTO/LTO.cpp:781\t" << "Adding module: " << Input.getName() << "\t" << LTOInfo->HasSummary << "\n";
   auto ModSyms = Input.module_symbols(ModI);
   addModuleToGlobalRes(ModSyms, {ResI, ResE},
                        IsThinLTO ? ThinLTO.ModuleMap.size() + 1 : 0,
@@ -1316,7 +1317,13 @@ Error LTO::runRegularLTO(AddStreamFn AddStream) {
     auto It = GlobalResolutions->find(name);
     auto Res = (It == GlobalResolutions->end() ||
             It->second.VisibleOutsideSummary || It->second.ExportDynamic);
-    errs() << "LTO.cpp:regularLTO\t" << name << "\t" << It->second.VisibleOutsideSummary << "\t" << It->second.ExportDynamic << "\t" << Res << "\n";
+    if (It != GlobalResolutions->end())
+      dbgs() << "LTO.cpp:regularLTO\t" << name << "\t"
+             << It->second.VisibleOutsideSummary << "\t"
+             << It->second.ExportDynamic << "\t" << Res << "\n";
+    else
+      dbgs() << "LTO.cpp:regularLTO\t" << name << "\t" << "Not found" << "\t"
+             << Res << "\n";
     return Res;
   };
 

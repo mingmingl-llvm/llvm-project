@@ -866,6 +866,7 @@ void llvm::updateVCallVisibilityInModule(
   if (!hasWholeProgramVisibility(WholeProgramVisibilityEnabledInLTO))
     return;
   for (GlobalVariable &GV : M.globals()) {
+    errs() << "WPD.cpp:regularLTO:869\t" << GV.getName() << "\n";
     // Add linkage unit visibility to any variable with type metadata, which are
     // the vtable definitions. We won't have an existing vcall_visibility
     // metadata on vtable definitions with public visibility.
@@ -879,8 +880,11 @@ void llvm::updateVCallVisibilityInModule(
         // current implementation but those with VCallVisibilityTranslationUnit
         // will have already been marked in clang so are unaffected.
         !(ValidateAllVtablesHaveTypeInfos &&
-          skipUpdateDueToValidation(GV, IsVisibleToRegularObj)))
+          skipUpdateDueToValidation(GV, IsVisibleToRegularObj))) {
+      errs() << "\tupgrading " << GV.getName() << " visibility to "
+             << GV.getVCallVisibility() << "\n";
       GV.setVCallVisibilityMetadata(GlobalObject::VCallVisibilityLinkageUnit);
+    }
   }
 }
 
