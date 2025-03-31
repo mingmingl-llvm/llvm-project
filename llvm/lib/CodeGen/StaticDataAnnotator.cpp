@@ -35,11 +35,17 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "static-data-annotator"
 
 using namespace llvm;
+
+static cl::opt<std::string>
+    HotSymbolsFile("hot-symbols-file", cl::init(""),
+                   cl::desc("Hot symbols file name for jump table hotness"));
 
 /// A module pass which iterates global variables in the module and annotates
 /// their section prefixes based on profile-driven analysis.
@@ -64,9 +70,37 @@ public:
   StringRef getPassName() const override { return "Static Data Annotator"; }
 
   bool runOnModule(Module &M) override;
+
+  void initHotSymbolSet();
+
+  std::unique_ptr<MemoryBuffer> HotSymbolsBuffer;
+
+  DenseSet<StringRef> HotSymbolsSet;
 };
 
+void StaticDataAnnotator::initHotSymbolSet() {
+  // read file
+  auto MemoryBufferOrErr = MemoryBuffer::getFile(HotSymbolsFile);
+  if (!MemoryBufferOrErr) {
+    errs() << "Failed to open hot symbols file: " << HotSymbolsFile << " "
+           << MemoryBufferOrErr.getError().message() << "\n";
+    return;
+  }
+
+  HotSymbolsBuffer = std::move(*MemoryBufferOrErr);
+
+  // parse file
+  SmallVector<StringRef, 0> Symbols;
+  HotSymbolsBuffer->getBuffer().split(Symbols, "\n");
+  for (auto &Symbol : Symbols) {
+    if (!Symbol.empty())
+      HotSymbolsSet.insert(Symbol);
+  }
+  errs() << "Hot symbols set size: " << HotSymbolsSet.size() << "\n";
+}
+
 bool StaticDataAnnotator::runOnModule(Module &M) {
+  initHotSymbolSet();
   SDPI = &getAnalysis<StaticDataProfileInfoWrapperPass>()
               .getStaticDataProfileInfo();
   PSI = &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
@@ -78,6 +112,27 @@ bool StaticDataAnnotator::runOnModule(Module &M) {
   for (auto &GV : M.globals()) {
     if (GV.isDeclarationForLinker())
       continue;
+
+    // Get the canonical name of the global variable.
+    StringRef Name = GV.getName();
+    auto LLVMSuffix = Name.rfind(".llvm.");
+    if (LLVMSuffix != StringRef::npos) {
+      Name = Name.substr(0, LLVMSuffix);
+      errs() << "SDA.cpp:127" << GV.getName() << "\t" << Name << "\n";
+    }
+
+    if (!Name.starts_with(".str") && !GV.hasPrivateLinkage()) {
+      if (HotSymbolsSet.contains(Name)) {
+        errs() << "SDA.cpp:126" << GV.getName() << "\t" << Name << "\n";
+        GV.setSectionPrefix("hot");
+      } else {
+        GV.setSectionPrefix("unlikely");
+      }
+      Changed = true;
+      continue;
+    } else {
+      errs() << "SDA.cpp:130" << GV.getName() << "\t" << Name << "\n";
+    }
 
     // The implementation below assumes prior passes don't set section prefixes,
     // and specifically do 'assign' rather than 'update'. So report error if a
