@@ -67,6 +67,14 @@ public:
     ModulePass::getAnalysisUsage(AU);
   }
 
+  StringRef getCanonicalName(StringRef Name) {
+    auto LLVMSuffix = Name.rfind(".llvm.");
+    if (LLVMSuffix != StringRef::npos) {
+      return Name.substr(0, LLVMSuffix);
+    }
+    return Name;
+  }
+
   StringRef getPassName() const override { return "Static Data Annotator"; }
 
   bool runOnModule(Module &M) override;
@@ -94,7 +102,7 @@ void StaticDataAnnotator::initHotSymbolSet() {
   HotSymbolsBuffer->getBuffer().split(Symbols, "\n");
   for (auto &Symbol : Symbols) {
     if (!Symbol.empty())
-      HotSymbolsSet.insert(Symbol);
+      HotSymbolsSet.insert(getCanonicalName(Symbol));
   }
   errs() << "Hot symbols set size: " << HotSymbolsSet.size() << "\n";
 }
@@ -114,12 +122,7 @@ bool StaticDataAnnotator::runOnModule(Module &M) {
       continue;
 
     // Get the canonical name of the global variable.
-    StringRef Name = GV.getName();
-    auto LLVMSuffix = Name.rfind(".llvm.");
-    if (LLVMSuffix != StringRef::npos) {
-      Name = Name.substr(0, LLVMSuffix);
-      errs() << "SDA.cpp:127" << GV.getName() << "\t" << Name << "\n";
-    }
+    StringRef Name = getCanonicalName(GV.getName());
 
     if (!Name.starts_with(".str") && !GV.hasPrivateLinkage()) {
       if (HotSymbolsSet.contains(Name)) {
