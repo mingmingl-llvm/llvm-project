@@ -6456,6 +6456,8 @@ CodeGenModule::GetAddrOfConstantCFString(const StringLiteral *Literal) {
   auto *GV =
       new llvm::GlobalVariable(getModule(), C->getType(), /*isConstant=*/true,
                                llvm::GlobalValue::PrivateLinkage, C, ".str");
+  // Not relevant.
+  // llvm::errs() << "CodeGenModule.cpp:6459\t" << GV->getName() << "\n";
   GV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
   // Don't enforce the target's minimum global alignment, since the only use
   // of the string is via this class initializer.
@@ -6610,6 +6612,9 @@ GenerateStringLiteral(llvm::Constant *C, llvm::GlobalValue::LinkageTypes LT,
   auto *GV = new llvm::GlobalVariable(
       M, C->getType(), !CGM.getLangOpts().WritableStrings, LT, C, GlobalName,
       nullptr, llvm::GlobalVariable::NotThreadLocal, AddrSpace);
+  llvm::errs() << "CodeGenModule.cpp:6615\t" << GV->getName() << "\n";
+  GV->print(llvm::errs());
+  llvm::errs() << "\n";
   GV->setAlignment(Alignment.getAsAlign());
   GV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
   if (GV->isWeakForLinker()) {

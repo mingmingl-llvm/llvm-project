@@ -5689,6 +5689,12 @@ std::string CGDebugInfo::GetName(const Decl *D, bool Qualified) const {
 
 void CGDebugInfo::EmitGlobalVariable(llvm::GlobalVariable *Var,
                                      const VarDecl *D) {
+  // CGDebugInfo::EmitGlobalVariable: _ZL4kBar
+  // CGDebugInfo::EmitGlobalVariable: _ZL5kStrs
+  // CGDebugInfo::EmitGlobalVariable: _ZL4kFoo
+  // CGDebugInfo::EmitGlobalVariable: _ZL23named_integer_merge_bar
+
+  llvm::errs() << "CGDebugInfo::EmitGlobalVariable: " << Var->getName() << "\n";
   assert(CGM.getCodeGenOpts().hasReducedDebugInfo());
   if (D->hasAttr<NoDebugAttr>())
     return;
@@ -5943,6 +5949,9 @@ void CGDebugInfo::AddStringLiteralDebugInfo(llvm::GlobalVariable *GV,
       DBuilder.createGlobalVariableExpression(
           nullptr, StringRef(), StringRef(), getOrCreateFile(Loc),
           getLineNumber(Loc), getOrCreateType(S->getType(), File), true);
+  llvm::errs() << "\tCGDebugInfo.cpp:5952\t";
+  Debug->dumpTree();
+  llvm::errs() << "\n";
   GV->addDebugInfo(Debug);
 }
 
