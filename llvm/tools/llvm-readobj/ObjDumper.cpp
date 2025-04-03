@@ -21,6 +21,7 @@
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/SystemZ/zOSSupport.h"
 #include "llvm/Support/raw_ostream.h"
+#include <fstream>
 #include <map>
 
 namespace llvm {
@@ -172,7 +173,24 @@ void ObjDumper::printSectionsAsString(const object::ObjectFile &Obj,
         unwrapOrError(Obj.getFileName(), Section.getContents());
     if (Decompress && Section.isCompressed())
       maybeDecompress(Obj, SectionName, SectionContent, Out);
-    printAsStringList(SectionContent);
+    // The hack: dump section string content into an output file.
+    // The output name is hardcoded.
+    // printAsStringList(SectionContent);
+    errs() << "ObjDumper.cpp: " << SectionContent.size() << "\n";
+    std::string outputFileName = "/tmp/string-content.txt";
+    std::ofstream outputFile;
+    outputFile.open(outputFileName);
+    if (outputFile.is_open()) {
+      const std::string &content = SectionContent.str();
+      // errs() << "ObjDumper.cpp: " << content.size() << "\n";
+      for (size_t i = 0; i < content.size(); i++) {
+        outputFile << content[i];
+      }
+      outputFile.close();
+    } else {
+      reportWarning(createError("Unable to open file for writing"),
+                    Obj.getFileName());
+    }
   }
 }
 
