@@ -15,6 +15,24 @@ using namespace llvm;
 
 namespace llvm {
 
+TEST(SCCIteratorTest, GraphIterationOrder) {
+  typedef Graph<4> GT;
+  GT G;
+  G.AddEdge(0, 1);
+  G.AddEdge(1, 2);
+  G.AddEdge(2, 3);
+  int NumGraph = 1;
+  for (scc_iterator<GT> I = scc_begin(G), E = scc_end(G); I != E; ++I) {
+    auto &SCC = *I;
+    for (unsigned i = 0, e = SCC.size(); i != e; ++i) {
+      auto &Node = SCC[i];
+      // errs() << "GraphIterOrder\t" << Node->first << "\n";
+      EXPECT_EQ(Node->first, (unsigned int)(4 - NumGraph));
+    }
+    NumGraph++;
+  }
+}
+
 TEST(SCCIteratorTest, AllSmallGraphs) {
   // Test SCC computation against every graph with NUM_NODES nodes or less.
   // Since SCC considers every node to have an implicit self-edge, we only
