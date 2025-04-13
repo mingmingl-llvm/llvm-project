@@ -5942,8 +5942,9 @@ void CGDebugInfo::AddStringLiteralDebugInfo(llvm::GlobalVariable *GV,
   llvm::DIFile *File = getOrCreateFile(Loc);
   llvm::DIGlobalVariableExpression *Debug =
       DBuilder.createGlobalVariableExpression(
-          nullptr, StringRef(), StringRef(), getOrCreateFile(Loc),
+          nullptr, GV->getName(), GV->getName(), getOrCreateFile(Loc),
           getLineNumber(Loc), getOrCreateType(S->getType(), File), true);
+  // TODO: Update GV linkage name.
   GV->addDebugInfo(Debug);
 }
 

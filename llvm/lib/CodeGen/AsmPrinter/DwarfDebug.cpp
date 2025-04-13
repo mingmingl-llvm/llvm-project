@@ -1208,6 +1208,7 @@ void DwarfDebug::beginModule(Module *M) {
     DenseSet<DIGlobalVariable *> Processed;
     for (auto *GVE : CUNode->getGlobalVariables()) {
       DIGlobalVariable *GV = GVE->getVariable();
+      errs() << "DwarfDebug.cpp:1211\t" << GV->getName() << "\n";
       if (Processed.insert(GV).second)
         CU.getOrCreateGlobalVariableDIE(GV, sortGlobalExprs(GVMap[GV]));
     }
