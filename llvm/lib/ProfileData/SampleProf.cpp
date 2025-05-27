@@ -176,6 +176,50 @@ raw_ostream &llvm::sampleprof::operator<<(raw_ostream &OS,
   return OS;
 }
 
+template <typename T>
+static std::error_code writeName(raw_ostream &OS, T Name,
+                                 const MapVector<T, uint32_t> &NameTable) {
+  if (auto NameIndexIter = NameTable.find(Name);
+      NameIndexIter != NameTable.end()) {
+    encodeULEB128(NameIndexIter->second, OS);
+    return sampleprof_error::success;
+  }
+
+  return sampleprof_error::truncated_name_table;
+}
+
+std::error_code FunctionSamples::serialize(
+    raw_ostream &OS, const MapVector<FunctionId, uint32_t> &NameTable) const {
+  if (std::error_code EC = writeName(OS, getContext().getFunction(), NameTable))
+    return EC;
+  encodeULEB128(getTotalSamples(), OS);
+
+  // Emit all the body samples.
+  encodeULEB128(getBodySamples().size(), OS);
+  for (const auto &I : getBodySamples()) {
+    LineLocation Loc = I.first;
+    const SampleRecord &Sample = I.second;
+    Loc.serialize(OS);
+    Sample.serialize(OS, NameTable);
+  }
+
+  // Recursively emit all the callsite samples.
+  uint64_t NumCallsites = 0;
+  for (const auto &J : getCallsiteSamples())
+    NumCallsites += J.second.size();
+  encodeULEB128(NumCallsites, OS);
+  for (const auto &J : getCallsiteSamples())
+    for (const auto &FS : J.second) {
+      LineLocation Loc = J.first;
+      const FunctionSamples &CalleeSamples = FS.second;
+      Loc.serialize(OS);
+      if (std::error_code EC = CalleeSamples.serialize(OS, NameTable))
+        return EC;
+    }
+
+  return sampleprof_error::success;
+}
+
 /// Print the samples collected for a function on stream \p OS.
 void FunctionSamples::print(raw_ostream &OS, unsigned Indent) const {
   if (getFunctionHash())

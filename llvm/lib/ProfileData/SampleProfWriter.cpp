@@ -816,36 +816,7 @@ std::error_code SampleProfileWriterBinary::writeSummary() {
   return sampleprof_error::success;
 }
 std::error_code SampleProfileWriterBinary::writeBody(const FunctionSamples &S) {
-  auto &OS = *OutputStream;
-  if (std::error_code EC = writeContextIdx(S.getContext()))
-    return EC;
-
-  encodeULEB128(S.getTotalSamples(), OS);
-
-  // Emit all the body samples.
-  encodeULEB128(S.getBodySamples().size(), OS);
-  for (const auto &I : S.getBodySamples()) {
-    LineLocation Loc = I.first;
-    const SampleRecord &Sample = I.second;
-    Loc.serialize(OS);
-    Sample.serialize(OS, getNameTable());
-  }
-
-  // Recursively emit all the callsite samples.
-  uint64_t NumCallsites = 0;
-  for (const auto &J : S.getCallsiteSamples())
-    NumCallsites += J.second.size();
-  encodeULEB128(NumCallsites, OS);
-  for (const auto &J : S.getCallsiteSamples())
-    for (const auto &FS : J.second) {
-      LineLocation Loc = J.first;
-      const FunctionSamples &CalleeSamples = FS.second;
-      Loc.serialize(OS);
-      if (std::error_code EC = writeBody(CalleeSamples))
-        return EC;
-    }
-
-  return sampleprof_error::success;
+  return S.serialize(*OutputStream, getNameTable());
 }
 
 /// Write samples of a top-level function to a binary file.
