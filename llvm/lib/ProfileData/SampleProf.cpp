@@ -22,6 +22,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LEB128.h"
 #include "llvm/Support/raw_ostream.h"
+#include <functional>
 #include <string>
 #include <system_error>
 
@@ -189,7 +190,10 @@ static std::error_code writeName(raw_ostream &OS, T Name,
 }
 
 std::error_code FunctionSamples::serialize(
-    raw_ostream &OS, const MapVector<FunctionId, uint32_t> &NameTable) const {
+    raw_ostream &OS, const MapVector<FunctionId, uint32_t> &NameTable,
+    std::optional<std::reference_wrapper<const MapVector<SampleContext, uint32_t>>>
+        CSNameTable) const {
+  encodeULEB128(getHeadSamples(), OS);
   if (std::error_code EC = writeName(OS, getContext().getFunction(), NameTable))
     return EC;
   encodeULEB128(getTotalSamples(), OS);

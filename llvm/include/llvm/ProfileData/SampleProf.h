@@ -758,9 +758,11 @@ public:
   void print(raw_ostream &OS = dbgs(), unsigned Indent = 0) const;
   void dump() const;
 
-  std::error_code serialize(raw_ostream& OS, const MapVector<FunctionId, uint32_t>& NameTable) const;
-  std::error_code serialize(raw_ostream& OS, const MapVector<FunctionId, uint32_t>& NameTable,
-                            const MapVector<SampleContext, uint32_t> &CSNameTable) const;
+  std::error_code serialize(
+      raw_ostream &OS, const MapVector<FunctionId, uint32_t> &NameTable,
+      std::optional<
+          std::reference_wrapper<const MapVector<SampleContext, uint32_t>>>
+          CSNameTable) const;
 
   sampleprof_error addTotalSamples(uint64_t Num, uint64_t Weight = 1) {
     bool Overflowed;
