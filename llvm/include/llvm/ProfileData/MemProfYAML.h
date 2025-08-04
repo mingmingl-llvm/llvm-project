@@ -1,6 +1,7 @@
 #ifndef LLVM_PROFILEDATA_MEMPROFYAML_H_
 #define LLVM_PROFILEDATA_MEMPROFYAML_H_
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ProfileData/DataAccessProf.h"
 #include "llvm/ProfileData/MemProf.h"
@@ -263,11 +264,17 @@ template <> struct MappingTraits<memprof::YamlDataAccessProfData> {
 
 template <> struct MappingTraits<memprof::AllMemProfData> {
   static void mapping(IO &Io, memprof::AllMemProfData &Data) {
-    Io.mapRequired("HeapProfileRecords", Data.HeapProfileRecords);
+    // Io.mapRequired("HeapProfileRecords", Data.HeapProfileRecords);
     // Map data access profiles if reading input, or if writing output &&
     // the struct is populated.
-    if (!Io.outputting() || !Data.YamlifiedDataAccessProfiles.isEmpty())
+    if (!Io.outputting() || !Data.YamlifiedDataAccessProfiles.isEmpty()) {
+      llvm::stable_sort(Data.YamlifiedDataAccessProfiles.Records,
+                        [](const llvm::memprof::DataAccessProfRecord &lhs,
+                           const llvm::memprof::DataAccessProfRecord &rhs) {
+                          return lhs.AccessCount > rhs.AccessCount;
+                        });
       Io.mapOptional("DataAccessProfiles", Data.YamlifiedDataAccessProfiles);
+    }
   }
 };
 
