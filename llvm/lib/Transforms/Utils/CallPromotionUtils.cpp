@@ -666,12 +666,9 @@ CallBase *llvm::promoteCallWithIfThenElse(CallBase &CB, Function &Callee,
   return &DirectCall;
 }
 
-CallBase &llvm::promoteCallWithVTableCmp(CallBase &CB, Instruction *VPtr,
-                                         Function *Callee,
-                                         ArrayRef<Constant *> AddressPoints,
-                                         MDNode *BranchWeights) {
+Value *llvm::createVTableCmp(IRBuilderBase &Builder, Instruction *VPtr,
+                             ArrayRef<Constant *> AddressPoints) {
   assert(!AddressPoints.empty() && "Caller should guarantee");
-  IRBuilder<> Builder(&CB);
   SmallVector<Value *, 2> ICmps;
   for (auto &AddressPoint : AddressPoints) {
     ICmps.push_back(Builder.CreateICmpEQ(VPtr, AddressPoint));
@@ -684,7 +681,15 @@ CallBase &llvm::promoteCallWithVTableCmp(CallBase &CB, Instruction *VPtr,
   }
 
   // TODO: Perform tree height reduction if the number of ICmps is high.
-  Value *Cond = Builder.CreateOr(ICmps);
+  return Builder.CreateOr(ICmps);
+}
+
+CallBase &llvm::promoteCallWithVTableCmp(CallBase &CB, Instruction *VPtr,
+                                         Function *Callee,
+                                         ArrayRef<Constant *> AddressPoints,
+                                         MDNode *BranchWeights) {
+  IRBuilder<> Builder(&CB);
+  Value *Cond = createVTableCmp(Builder, VPtr, AddressPoints);
 
   // Version the indirect call site. If Cond is true, 'NewInst' will be
   // executed, otherwise the original call site will be executed.

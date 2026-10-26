@@ -337,7 +337,8 @@ static cl::opt<bool> AnnotateSampleProfileInlinePhase(
 
 namespace llvm {
 extern cl::opt<bool> EnableExtTspBlockPlacement;
-}
+extern cl::opt<bool> EnableVTableProfileUse;
+} // namespace llvm
 
 namespace {
 
@@ -946,6 +947,20 @@ bool SampleProfileLoader::tryPromoteAndInlineCandidate(
     auto *DI = &pgo::promoteIndirectCall(
         CI, R->second, Candidate.CallsiteCount, Sum, false, ORE);
     if (DI) {
+      if (EnableVTableProfileUse) {
+        if (BasicBlock *PredBB = CI.getParent()->getSinglePredecessor()) {
+          if (auto *BI = dyn_cast<CondBrInst>(PredBB->getTerminator())) {
+            if (auto *Cmp = dyn_cast<ICmpInst>(BI->getCondition())) {
+              LLVMContext &Ctx = CI.getContext();
+              Cmp->setMetadata(
+                  "samplepgo.icp.count",
+                  MDNode::get(Ctx, ConstantAsMetadata::get(ConstantInt::get(
+                                       Type::getInt64Ty(Ctx),
+                                       Candidate.CallsiteCount))));
+            }
+          }
+        }
+      }
       Sum -= Candidate.CallsiteCount;
       // Do not prorate the indirect callsite distribution since the original
       // distribution will be used to scale down non-promoted profile target

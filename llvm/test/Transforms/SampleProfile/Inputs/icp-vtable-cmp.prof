@@ -1,0 +1,8 @@
+test_early_only:1000:0
+ 1: 900
+ 1: Derived1_bar:900
+  1: 900
+test_early_and_remaining:1600:0
+ 1: 1000 Derived2_bar:500 Base1_bar:400
+ 1: Derived1_bar:600
+  1: 600

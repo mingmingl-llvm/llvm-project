@@ -23,6 +23,7 @@ class CallBase;
 class CastInst;
 class Function;
 class Instruction;
+class IRBuilderBase;
 class MDNode;
 class Value;
 
@@ -60,6 +61,12 @@ LLVM_ABI CallBase &promoteCallWithIfThenElse(CallBase &CB, Function *Callee,
 
 LLVM_ABI CallBase *promoteCallWithIfThenElse(CallBase &CB, Function &Callee,
                                              PGOContextualProfile &CtxProf);
+
+/// Create a condition that checks if \p VPtr is equal to any of the given
+/// vtable \p AddressPoints. Also strips `unnamed_addr` from the referenced
+/// vtable globals.
+LLVM_ABI Value *createVTableCmp(IRBuilderBase &Builder, Instruction *VPtr,
+                                ArrayRef<Constant *> AddressPoints);
 
 /// This is similar to `promoteCallWithIfThenElse` except that the condition to
 /// promote a virtual call is that \p VPtr is the same as any of \p

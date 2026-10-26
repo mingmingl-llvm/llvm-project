@@ -25,6 +25,7 @@
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
@@ -131,10 +132,12 @@ static BasicBlock *getUserBasicBlock(Use &U, Instruction *UserInst) {
 }
 
 // `DestBB` is a suitable basic block to sink `Inst` into when `Inst` have users
-// and all users are in `DestBB`. The caller guarantees that `Inst->getParent()`
-// is the sole predecessor of `DestBB` and `DestBB` is dominated by
-// `Inst->getParent()`.
-static bool isDestBBSuitableForSink(Instruction *Inst, BasicBlock *DestBB) {
+// and all users are in `DestBB` (or in `FinalIndirectCallBB`, which is
+// dominated by `DestBB` along the promotion chain). The caller guarantees that
+// `Inst->getParent()` is the sole predecessor of `DestBB` and `DestBB` is
+// dominated by `Inst->getParent()`.
+static bool isDestBBSuitableForSink(Instruction *Inst, BasicBlock *DestBB,
+                                    BasicBlock *FinalIndirectCallBB) {
   // 'BB' is used only by assert.
   [[maybe_unused]] BasicBlock *BB = Inst->getParent();
 
@@ -149,9 +152,10 @@ static bool isDestBBSuitableForSink(Instruction *Inst, BasicBlock *DestBB) {
     // instruction must be an instruction. See `Verifier::visitInstruction`.
     Instruction *UserInst = cast<Instruction>(User);
     UserBB = getUserBasicBlock(Use, UserInst);
-    // Do not sink if Inst is used in a basic block that is not DestBB.
+    // Do not sink if Inst is used in a basic block other than DestBB or
+    // FinalIndirectCallBB.
     // TODO: Sink to the common dominator of all user blocks.
-    if (UserBB != DestBB)
+    if (UserBB != DestBB && UserBB != FinalIndirectCallBB)
       return false;
   }
   return UserBB != nullptr;
@@ -161,8 +165,9 @@ static bool isDestBBSuitableForSink(Instruction *Inst, BasicBlock *DestBB) {
 // to the cold indirect call fallback.
 // FIXME: Move the sink eligibility check below to a utility function in
 // Transforms/Utils/ directory.
-static bool tryToSinkInstruction(Instruction *I, BasicBlock *DestBlock) {
-  if (!isDestBBSuitableForSink(I, DestBlock))
+static bool tryToSinkInstruction(Instruction *I, BasicBlock *DestBlock,
+                                 BasicBlock *FinalIndirectCallBB) {
+  if (!isDestBBSuitableForSink(I, DestBlock, FinalIndirectCallBB))
     return false;
 
   // Do not move control-flow-involving, volatile loads, vaarg, alloca
@@ -208,7 +213,10 @@ static bool tryToSinkInstruction(Instruction *I, BasicBlock *DestBlock) {
 // Try to sink instructions after VPtr to the indirect call fallback.
 // Return the number of sunk IR instructions.
 static int tryToSinkInstructions(BasicBlock *OriginalBB,
-                                 BasicBlock *IndirectCallBB) {
+                                 BasicBlock *IndirectCallBB,
+                                 BasicBlock *FinalIndirectCallBB = nullptr) {
+  if (!FinalIndirectCallBB)
+    FinalIndirectCallBB = IndirectCallBB;
   int SinkCount = 0;
   // Do not sink across a critical edge for simplicity.
   if (IndirectCallBB->getUniquePredecessor() != OriginalBB)
@@ -216,7 +224,7 @@ static int tryToSinkInstructions(BasicBlock *OriginalBB,
   // Sink all eligible instructions in OriginalBB in reverse order.
   for (Instruction &I :
        llvm::make_early_inc_range(llvm::drop_begin(llvm::reverse(*OriginalBB))))
-    if (tryToSinkInstruction(&I, IndirectCallBB))
+    if (tryToSinkInstruction(&I, IndirectCallBB, FinalIndirectCallBB))
       SinkCount++;
 
   return SinkCount;
@@ -247,9 +255,12 @@ private:
 
   // A struct that records the direct target and it's call count.
   struct PromotionCandidate {
-    Function *const TargetFunction;
-    const uint64_t Count;
-    const uint32_t Index;
+    Function *TargetFunction;
+    uint64_t Count;
+    uint32_t Index;
+    // Non-null if this candidate was already promoted by SampleProfileLoader
+    // using a function-pointer comparison (`icmp eq %vfn, @TargetFunction`).
+    ICmpInst *FuncCmpInst;
 
     // The following fields only exists for promotion candidates with vtable
     // information.
@@ -261,9 +272,15 @@ private:
     VTableGUIDCountsMap VTableGUIDAndCounts;
     SmallVector<Constant *> AddressPoints;
 
-    PromotionCandidate(Function *F, uint64_t C, uint32_t I)
-        : TargetFunction(F), Count(C), Index(I) {}
+    PromotionCandidate(Function *F, uint64_t C, uint32_t I,
+                       ICmpInst *FuncCmp = nullptr)
+        : TargetFunction(F), Count(C), Index(I), FuncCmpInst(FuncCmp) {}
   };
+
+  // Recover candidates already promoted for `CB` by SampleProfileLoader using
+  // function-pointer comparisons marked with `!samplepgo.icp.count`.
+  std::vector<PromotionCandidate>
+  getEarlyPromotedCandidatesForCallSite(CallBase &CB);
 
   // Check if the indirect-call call site should be promoted. Return the number
   // of promotions. Inst is the candidate indirect call, ValueDataRef
@@ -387,6 +404,42 @@ bool IndirectCallPromoter::isValidTarget(uint64_t Target,
     return false;
   }
   return true;
+}
+
+std::vector<IndirectCallPromoter::PromotionCandidate>
+IndirectCallPromoter::getEarlyPromotedCandidatesForCallSite(CallBase &CB) {
+  std::vector<PromotionCandidate> EarlyCandidates;
+  BasicBlock *CurBB = CB.getParent();
+  Value *CalledOp = CB.getCalledOperand();
+  while (BasicBlock *PredBB = CurBB->getUniquePredecessor()) {
+    auto *BI = dyn_cast<CondBrInst>(PredBB->getTerminator());
+    if (!BI || BI->getSuccessor(1) != CurBB)
+      break;
+    auto *Cmp = dyn_cast<ICmpInst>(BI->getCondition());
+    if (!Cmp || Cmp->getPredicate() != ICmpInst::ICMP_EQ)
+      break;
+    MDNode *CountMD = Cmp->getMetadata("samplepgo.icp.count");
+    if (!CountMD || CountMD->getNumOperands() != 1)
+      break;
+    Cmp->setMetadata("samplepgo.icp.count", nullptr);
+    auto *CountC = mdconst::dyn_extract<ConstantInt>(CountMD->getOperand(0));
+    if (!CountC)
+      break;
+    Value *LHS = Cmp->getOperand(0);
+    Value *RHS = Cmp->getOperand(1);
+    if (LHS != CalledOp && RHS != CalledOp)
+      break;
+    Value *CalleeVal = (LHS == CalledOp) ? RHS : LHS;
+    auto *TargetFunc = dyn_cast<Function>(CalleeVal->stripPointerCasts());
+    if (!TargetFunc)
+      break;
+    EarlyCandidates.emplace_back(TargetFunc, CountC->getZExtValue(),
+                                 /*Index=*/std::numeric_limits<uint32_t>::max(),
+                                 Cmp);
+    CurBB = PredBB;
+  }
+  std::reverse(EarlyCandidates.begin(), EarlyCandidates.end());
+  return EarlyCandidates;
 }
 
 // Indirect-call promotion heuristic. The direct targets are sorted based on
@@ -592,18 +645,26 @@ bool IndirectCallPromoter::tryToPromoteWithFuncCmp(
     uint64_t TotalCount, MutableArrayRef<InstrProfValueData> ICallProfDataRef,
     uint32_t NumCandidates, VTableGUIDCountsMap &VTableGUIDCounts) {
   uint32_t NumPromoted = 0;
+  bool UpdatedVTableCounts = false;
+
+  uint64_t SumCandidateCount = 0;
+  for (const auto &C : Candidates)
+    SumCandidateCount += C.Count;
+  TotalCount = std::max(TotalCount, SumCandidateCount);
 
   for (const auto &C : Candidates) {
     uint64_t FuncCount = C.Count;
-    pgo::promoteIndirectCall(CB, C.TargetFunction, FuncCount, TotalCount,
-                             SamplePGO, &ORE);
+    if (!C.FuncCmpInst) {
+      pgo::promoteIndirectCall(CB, C.TargetFunction, FuncCount, TotalCount,
+                               SamplePGO, &ORE);
+      NumOfPGOICallPromotion++;
+      NumPromoted++;
+
+      // Update the count and this entry will be erased later.
+      ICallProfDataRef[C.Index].Count = 0;
+    }
     assert(TotalCount >= FuncCount);
     TotalCount -= FuncCount;
-    NumOfPGOICallPromotion++;
-    NumPromoted++;
-
-    // Update the count and this entry will be erased later.
-    ICallProfDataRef[C.Index].Count = 0;
     if (!EnableVTableProfileUse || C.VTableGUIDAndCounts.empty())
       continue;
 
@@ -615,20 +676,25 @@ bool IndirectCallPromoter::tryToPromoteWithFuncCmp(
     for (const auto &[GUID, VTableCount] : C.VTableGUIDAndCounts)
       SumVTableCount += VTableCount;
 
-    for (const auto &[GUID, VTableCount] : C.VTableGUIDAndCounts) {
-      APInt APFuncCount((unsigned)128, FuncCount, false /*signed*/);
-      APFuncCount *= VTableCount;
-      VTableGUIDCounts[GUID] -= APFuncCount.udiv(SumVTableCount).getZExtValue();
+    if (SumVTableCount) {
+      for (const auto &[GUID, VTableCount] : C.VTableGUIDAndCounts) {
+        APInt APFuncCount((unsigned)128, FuncCount, false /*signed*/);
+        APFuncCount *= VTableCount;
+        uint64_t Deduct = APFuncCount.udiv(SumVTableCount).getZExtValue();
+        VTableGUIDCounts[GUID] -= std::min(VTableGUIDCounts[GUID], Deduct);
+      }
+      UpdatedVTableCounts = true;
     }
   }
-  if (NumPromoted == 0)
+  if (NumPromoted == 0 && !UpdatedVTableCounts)
     return false;
 
   assert(NumPromoted <= ICallProfDataRef.size() &&
          "Number of promoted functions should not be greater than the number "
          "of values in profile metadata");
 
-  updateFuncValueProfiles(CB, ICallProfDataRef, TotalCount, NumCandidates);
+  if (NumPromoted > 0)
+    updateFuncValueProfiles(CB, ICallProfDataRef, TotalCount, NumCandidates);
   updateVPtrValueProfiles(VPtr, VTableGUIDCounts);
   return true;
 }
@@ -688,21 +754,56 @@ bool IndirectCallPromoter::tryToPromoteWithVTableCmp(
     MutableArrayRef<InstrProfValueData> ICallProfDataRef,
     VTableGUIDCountsMap &VTableGUIDCounts) {
   SmallVector<std::pair<uint32_t, uint64_t>, 4> PromotedFuncCount;
+  bool RewroteEarlyCandidate = false;
 
+  uint64_t SumCandidateCount = 0;
+  for (const auto &Candidate : Candidates)
+    SumCandidateCount += Candidate.Count;
+  TotalFuncCount = std::max(TotalFuncCount, SumCandidateCount);
+
+  // First replace function-pointer comparisons for candidates already promoted
+  // by SampleProfileLoader with vtable comparisons, recording the guard basic
+  // block and its false successor for each so instructions can be sunk step by
+  // step.
+  SmallVector<std::pair<BasicBlock *, BasicBlock *>, 2> EarlySinkBlocks;
+  for (const auto &Candidate : Candidates) {
+    if (!Candidate.FuncCmpInst)
+      continue;
+    ICmpInst *FuncCmp = Candidate.FuncCmpInst;
+    BasicBlock *CondBB = FuncCmp->getParent();
+    BasicBlock *ElseBB =
+        cast<CondBrInst>(CondBB->getTerminator())->getSuccessor(1);
+    IRBuilder<> Builder(FuncCmp);
+    Value *VTableCmp = createVTableCmp(Builder, VPtr, Candidate.AddressPoints);
+    FuncCmp->replaceAllUsesWith(VTableCmp);
+    FuncCmp->eraseFromParent();
+    EarlySinkBlocks.emplace_back(CondBB, ElseBB);
+    RewroteEarlyCandidate = true;
+  }
+
+  size_t EarlyIdx = 0;
   for (const auto &Candidate : Candidates) {
     for (auto &[GUID, Count] : Candidate.VTableGUIDAndCounts)
-      VTableGUIDCounts[GUID] -= Count;
+      VTableGUIDCounts[GUID] -= std::min(VTableGUIDCounts[GUID], Count);
 
-    // 'OriginalBB' is the basic block of indirect call. After each candidate
-    // is promoted, a new basic block is created for the indirect fallback basic
-    // block and indirect call `CB` is moved into this new BB.
-    BasicBlock *OriginalBB = CB.getParent();
-    promoteCallWithVTableCmp(
-        CB, VPtr, Candidate.TargetFunction, Candidate.AddressPoints,
-        createBranchWeights(CB.getContext(), Candidate.Count,
-                            TotalFuncCount - Candidate.Count));
+    int SinkCount = 0;
+    if (Candidate.FuncCmpInst) {
+      auto [CondBB, ElseBB] = EarlySinkBlocks[EarlyIdx++];
+      SinkCount = tryToSinkInstructions(CondBB, ElseBB, CB.getParent());
+    } else {
+      // 'OriginalBB' is the basic block of indirect call. After each candidate
+      // is promoted, a new basic block is created for the indirect fallback
+      // basic block and indirect call `CB` is moved into this new BB.
+      BasicBlock *OriginalBB = CB.getParent();
+      promoteCallWithVTableCmp(
+          CB, VPtr, Candidate.TargetFunction, Candidate.AddressPoints,
+          createBranchWeights(CB.getContext(), Candidate.Count,
+                              TotalFuncCount - Candidate.Count));
 
-    int SinkCount = tryToSinkInstructions(OriginalBB, CB.getParent());
+      SinkCount = tryToSinkInstructions(OriginalBB, CB.getParent());
+      PromotedFuncCount.push_back({Candidate.Index, Candidate.Count});
+      NumOfPGOICallPromotion++;
+    }
 
     ORE.emit([&]() {
       OptimizationRemark Remark(DEBUG_TYPE, "Promoted", &CB);
@@ -732,8 +833,6 @@ bool IndirectCallPromoter::tryToPromoteWithVTableCmp(
       return Remark;
     });
 
-    PromotedFuncCount.push_back({Candidate.Index, Candidate.Count});
-
     assert(TotalFuncCount >= Candidate.Count &&
            "Within one prof metadata, total count is the sum of counts from "
            "individual <target, count> pairs");
@@ -741,10 +840,9 @@ bool IndirectCallPromoter::tryToPromoteWithVTableCmp(
     // counts, see
     // https://github.com/llvm/llvm-project/blob/abedb3b8356d5d56f1c575c4f7682fba2cb19787/llvm/lib/ProfileData/InstrProf.cpp#L1281-L1288
     TotalFuncCount -= std::min(TotalFuncCount, Candidate.Count);
-    NumOfPGOICallPromotion++;
   }
 
-  if (PromotedFuncCount.empty())
+  if (PromotedFuncCount.empty() && !RewroteEarlyCandidate)
     return false;
 
   // Update value profiles for 'CB' and 'VPtr', assuming that each 'CB' has a
@@ -753,12 +851,15 @@ bool IndirectCallPromoter::tryToPromoteWithVTableCmp(
   // used to load multiple virtual functions. The vtable profiles needs to be
   // updated properly in that case (e.g, for each indirect call annotate both
   // type profiles and function profiles in one !prof).
-  for (size_t I = 0; I < PromotedFuncCount.size(); I++) {
-    uint32_t Index = PromotedFuncCount[I].first;
-    ICallProfDataRef[Index].Count -=
-        std::max(PromotedFuncCount[I].second, ICallProfDataRef[Index].Count);
+  if (!PromotedFuncCount.empty()) {
+    for (size_t I = 0; I < PromotedFuncCount.size(); I++) {
+      uint32_t Index = PromotedFuncCount[I].first;
+      ICallProfDataRef[Index].Count -=
+          std::max(PromotedFuncCount[I].second, ICallProfDataRef[Index].Count);
+    }
+    updateFuncValueProfiles(CB, ICallProfDataRef, TotalFuncCount,
+                            NumCandidates);
   }
-  updateFuncValueProfiles(CB, ICallProfDataRef, TotalFuncCount, NumCandidates);
   updateVPtrValueProfiles(VPtr, VTableGUIDCounts);
   return true;
 }
@@ -769,35 +870,54 @@ bool IndirectCallPromoter::processFunction(ProfileSummaryInfo *PSI) {
   bool Changed = false;
   ICallPromotionAnalysis ICallAnalysis;
   for (auto *CB : findIndirectCalls(F)) {
+    std::vector<PromotionCandidate> EarlyCandidates =
+        getEarlyPromotedCandidatesForCallSite(*CB);
     uint32_t NumCandidates;
     uint64_t TotalCount;
     auto ICallProfDataRef = ICallAnalysis.getPromotionCandidatesForInstruction(
         CB, TotalCount, NumCandidates);
-    if (!NumCandidates)
+    if (!NumCandidates && EarlyCandidates.empty())
       continue;
-    if (PSI && PSI->hasProfileSummary()) {
+
+    bool PromoteRemaining = NumCandidates > 0;
+    if (PromoteRemaining && PSI && PSI->hasProfileSummary()) {
       // Don't promote cold candidates.
       if (PSI->isColdCount(TotalCount)) {
         LLVM_DEBUG(dbgs() << "Don't promote the cold candidate: TotalCount="
                           << TotalCount << "\n");
-        continue;
+        PromoteRemaining = false;
       }
       // Only promote hot if -icp-allow-hot-only is true. ICP has its own cutoff
       // threshold for hotness, which defaults to ProfileSummaryCutoffHot if
       // unspecified.
-      if (Opts.icp_allow_hot_only &&
+      if (PromoteRemaining && Opts.icp_allow_hot_only &&
           !PSI->isHotCountNthPercentile(Opts.hot_func_cutoff_for_icp == -1
                                             ? ProfileSummaryCutoffHot
                                             : Opts.hot_func_cutoff_for_icp,
                                         TotalCount)) {
         LLVM_DEBUG(dbgs() << "Don't promote the non-hot candidate: TotalCount="
                           << TotalCount << "\n");
-        continue;
+        PromoteRemaining = false;
       }
     }
 
-    auto PromotionCandidates = getPromotionCandidatesForCallSite(
-        *CB, ICallProfDataRef, TotalCount, NumCandidates);
+    std::vector<PromotionCandidate> PromotionCandidates =
+        std::move(EarlyCandidates);
+    if (PromoteRemaining) {
+      auto RemainingCandidates = getPromotionCandidatesForCallSite(
+          *CB, ICallProfDataRef, TotalCount, NumCandidates);
+      if (Opts.icp_csskip != 0 && NumOfPGOICallsites <= Opts.icp_csskip)
+        continue;
+      llvm::append_range(PromotionCandidates, RemainingCandidates);
+    } else if (!PromotionCandidates.empty()) {
+      NumOfPGOICallsites++;
+      if (Opts.icp_csskip != 0 && NumOfPGOICallsites <= Opts.icp_csskip) {
+        LLVM_DEBUG(dbgs() << " Skip: User options.\n");
+        continue;
+      }
+    }
+    if (PromotionCandidates.empty())
+      continue;
 
     VTableGUIDCountsMap VTableGUIDCounts;
     Instruction *VPtr =
